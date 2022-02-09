@@ -1,0 +1,303 @@
+import datetime
+import random
+from typing_extensions import ParamSpec
+import numpy as np
+from scipy import integrate, stats
+
+import csv
+
+# generate Gaussian function
+def gauss(x, mu=0, sigma=1):
+    return stats.norm.pdf(x, mu, sigma)
+
+class Grid():
+    def __init__(self, size=32) -> None:
+        tmp = [None]*size
+        for i in range(size):
+            tmp[i] = [False]*size
+        self.grid = tmp
+
+    def assign_voter_location(self, x, y, individual):
+        self.grid[y][x] = individual
+
+
+class Voter():
+    def __init__(self) -> None:
+        # while True:
+        #     tmp = np.random.standard_normal(1)[0]
+        #     if -1 <= tmp <= 1: break
+        # self.preference = tmp
+        self.preference = np.random.standard_normal(1)[0]
+        self.prev_utilities = []
+        self.votes = [True if random.randint(0,100) < 50 else False]
+        self.neighbor_records = [None]
+
+    def utility(self,x,p,c) -> float:
+        # x: position of winning party
+        # p: position of individual
+        # c: cost of voting
+        return -(x-p)*(x-p) - c
+
+    def interact(self):
+        # an individual can only interact
+        # with its adjacent neighbors.
+
+        # decide whether being [voter] or [abstainer]
+        # yields higher satisfaction
+        pass
+
+
+class Party():
+    def __init__(self, platform) -> None:
+        self.platforms = [platform]  # between -1 and 1
+        self.votes = []
+        self.wins = []
+
+    def estimate_median_voter(self, x1, x2) -> float:
+        lowerbound = -np.inf
+        upperbound = (x1+x2)/2.0
+
+        # integrate between bounds
+        integral, error = integrate.quad(gauss, lowerbound, upperbound)
+        # print(integral)
+
+def write_to_csv(fname, data):
+    file = open(fname, 'a')
+    writer = csv.writer(file, lineterminator='\n')
+    for d in data:
+        writer.writerow(d)
+# LOG files
+# log_party = open('./log/party_log_file.csv', 'a')
+# log_voters = open('./log/voters_log_file.csv', 'a')
+# writer_party = csv.writer(log_party)
+# writer_voters = csv.writer(log_voters)
+
+# parameters
+COST = 0.1
+
+# FIRST ELECTION (initialization)
+g = Grid()
+
+# initialize all 1024 individuals
+for y in range(32):
+    for x in range(32):
+        individual = Voter()
+        g.assign_voter_location( x, y, individual)
+
+# initialize 2 parties
+party_neg = Party(-1)
+party_pos = Party(1)
+
+start_time = datetime.datetime.now()
+# >>>>>>>>>>> FIRST ELECTION <<<<<<<<<<<<<<<<<<<
+vote_neg, vote_pos = 0, 0
+
+for y in range(32):
+    for x in range(32):
+        individual = g.grid[y][x]
+
+        if individual.votes[-1] is True:
+            # vote neg (choice 1)
+            u_neg = -(individual.preference - party_neg.platforms[-1])**2 - COST
+            # vote pos (choice 2)
+            u_pos = -(individual.preference - party_pos.platforms[-1])**2 - COST
+
+            if u_neg >= u_pos: 
+                vote_neg += 1
+                individual.prev_utilities.append(u_neg)
+            else:
+                vote_pos += 1
+                individual.prev_utilities.append(u_pos)
+
+        else:
+            u_neg = -(individual.preference - party_neg.platforms[-1])**2
+            u_pos = -(individual.preference - party_pos.platforms[-1])**2
+            if u_neg >= u_pos: u = u_neg
+            else: u = u_pos
+            individual.prev_utilities.append(u)
+
+if vote_neg > vote_pos:
+    party_neg.wins.append(1)  # elected
+    party_pos.wins.append(0)
+elif vote_neg < vote_pos:
+    party_pos.wins.append(1)  # elected
+    party_neg.wins.append(0)
+else:
+    party_pos.wins.append(0)
+    party_neg.wins.append(0)
+
+party_neg.votes.append( vote_neg )
+party_pos.votes.append( vote_pos )
+
+# write to log file
+# PARTY >>> [#election, #party, COST, platform, elected?]
+with open('./log/party_log_file.csv', 'a') as f:
+    writer = csv.writer(f, lineterminator='\n')
+    writer.writerow( [1, 1, COST, party_neg.platforms[0], party_neg.wins[0] ] )
+    writer.writerow( [1, 2, COST, party_pos.platforms[0], party_pos.wins[0] ] )
+
+# VOTER >>> [#election, #voter, COST, neightbor cnt, voter cnt, abstainer cnt]
+with open('./log/voters_log_file.csv', 'a') as f:
+    writer = csv.writer(f, lineterminator='\n')
+    idx = 0
+    for y in range(32):
+        for x in range(32):
+            idx += 1
+            individual = g.grid[y][x]
+            writer.writerow( [1, idx, COST, individual.votes[0], -1, -1] )
+
+print(f'[Election 1 Ended] Time Elapsed: {datetime.datetime.now()-start_time}')
+
+# print( vote_neg, vote_pos )
+# print( party_neg.platforms[-1], party_pos.platforms[-1] )
+# print( party_neg.platforms[-1], party_neg.wins, party_pos.platforms[-1], party_pos.wins )
+# print( g.grid[0][3].vote, g.grid[0][3].preference, g.grid[0][3].prev_utilities)
+
+# >>>>>>>>>>>> SECOND+ ELECTION <<<<<<<<<<<<<<<<<<<
+
+ROUNDS = 9
+for r in range(0, ROUNDS):
+    # both parties try to adapt to previous results.
+    s = party_neg.votes[r] / (party_neg.votes[r]+party_pos.votes[r])
+    x1 = party_neg.platforms[r]
+    x2 = party_pos.platforms[r]
+
+    min_err = 100
+    best_m = 0
+
+    for i in range(2001):
+        m_guess = -1 + 0.001*i
+        lowerbound = -np.inf
+        upperbound = (x1+x2)/2.0
+
+        # integrate between bounds
+        integral = integrate.quad(gauss, lowerbound, upperbound, args=(m_guess) )[0]
+        err = np.abs(integral-s)
+        if err < min_err:
+            min_err = err
+            best_m = m_guess
+        # if (err > min_err + 0.05) and increasing: break ???
+
+    party_neg.platforms.append( (best_m + party_neg.platforms[r])/2.0 )
+    party_pos.platforms.append( (best_m + party_pos.platforms[r])/2.0 )
+    # print( party_neg.platforms, party_pos.platforms )
+
+    # individuals seek opinions from neighbors
+    for y in range(32):
+        for x in range(32):
+            individual = g.grid[y][x]
+            # corner case
+            if (x==0 and y==0):
+                all_neighbors = [ g.grid[0][1] , g.grid[1][0] ]
+            elif (x==31 and y==0):
+                all_neighbors = [ g.grid[0][30] , g.grid[1][31] ]
+            elif (x==0 and y==31):
+                all_neighbors = [ g.grid[30][0] , g.grid[31][1] ]
+            elif (x==31 and y==31):
+                all_neighbors = [ g.grid[31][30] , g.grid[30][31] ]
+            # edge (not corner) case
+            elif (y==0 and 1<=x<=30):
+                all_neighbors = [ g.grid[0][x-1] , g.grid[0][x+1] , g.grid[1][x] ]
+            elif (y==31 and 1<=x<=30):
+                all_neighbors = [ g.grid[31][x-1] , g.grid[0][x+1] , g.grid[30][x] ]
+            elif (1<=y<=31 and x==0):
+                all_neighbors = [ g.grid[y-1][0] , g.grid[y+1][0] , g.grid[y][1] ]
+            elif (1<=y<=31 and x==31):
+                all_neighbors = [ g.grid[y-1][31] , g.grid[y+1][31] , g.grid[y][30] ]
+            # inside case:
+            else:
+                n_above = g.grid[y-1][x-1:x+2]
+                n_middle = g.grid[y][x-1:x+2]
+                n_below = g.grid[y+1][x-1:x+2]
+                all_neighbors = n_above + n_middle + n_below
+
+            voter_tot_u = 0
+            voter_cnt = 0
+            abstainer_tot_u = 0
+            abstainer_cnt = 0
+            for neighbor in all_neighbors:
+                if neighbor.votes[r] is True:
+                    voter_tot_u += neighbor.prev_utilities[0]
+                    voter_cnt += 1
+                elif neighbor.votes[r] is False:
+                    abstainer_tot_u += neighbor.prev_utilities[0]
+                    abstainer_cnt += 1
+            
+            if voter_cnt == 0 or abstainer_cnt == 0:
+                individual.votes.append( individual.votes[0] )
+                individual.neighbor_records.append( (voter_cnt, abstainer_cnt) )
+                continue
+            
+            vote_avg = voter_tot_u / voter_cnt
+            abstain_avg = abstainer_tot_u / abstainer_cnt
+
+            if vote_avg >= abstain_avg:
+                individual.votes.append( True )
+
+            elif vote_avg < abstain_avg:
+                individual.votes.append( False )
+
+            individual.neighbor_records.append( (voter_cnt, abstainer_cnt) )
+
+    # start voting
+    vote_neg, vote_pos = 0, 0
+
+    for y in range(32):
+        for x in range(32):
+            individual = g.grid[y][x]
+
+            if individual.votes[r] is True:
+                # vote neg (choice 1)
+                u_neg = -(individual.preference - party_neg.platforms[r])**2 - COST
+                # vote pos (choice 2)
+                u_pos = -(individual.preference - party_pos.platforms[r])**2 - COST
+
+                if u_neg >= u_pos:
+                    vote_neg += 1
+                    individual.prev_utilities.append(u_neg)
+                else:
+                    vote_pos += 1
+                    individual.prev_utilities.append(u_pos)
+
+            else:
+                u_neg = -(individual.preference - party_neg.platforms[r])**2
+                u_pos = -(individual.preference - party_pos.platforms[r])**2
+                if u_neg >= u_pos: u = u_neg
+                else: u = u_pos
+                individual.prev_utilities.append(u)
+
+    if vote_neg > vote_pos:
+        party_neg.wins.append(1)
+        party_pos.wins.append(0)
+    elif vote_neg < vote_pos:
+        party_pos.wins.append(1)
+        party_neg.wins.append(0)
+    else:
+        party_pos.wins.append(0)
+        party_neg.wins.append(0)
+
+    party_neg.votes.append( vote_neg )
+    party_pos.votes.append( vote_pos )
+
+    # write to log file
+    # PARTY >>> [#election, #party, COST, platform, elected?]
+    with open('./log/party_log_file.csv', 'a') as f:
+        writer = csv.writer(f, lineterminator='\n')
+        writer.writerow( [r+2, 1, COST, party_neg.platforms[r+1], party_neg.wins[r+1] ] )
+        writer.writerow( [r+2, 2, COST, party_pos.platforms[r+1], party_pos.wins[r+1] ] )
+    # writer_party.writerow( [r+2, 1, COST, party_neg.platforms[r], party_neg.wins[r] ] )
+    # writer_party.writerow( [r+2, 2, COST, party_pos.platforms[r], party_pos.wins[r] ] )
+
+    # VOTER >>> [#election, #voter, COST, voted?, voter cnt, abstainer cnt]
+    with open('./log/voters_log_file.csv', 'a') as f:
+        writer = csv.writer(f, lineterminator='\n')
+        idx = 0
+        for y in range(32):
+            for x in range(32):
+                idx += 1
+                individual = g.grid[y][x]
+                v_decision = individual.votes[r+1]
+                v, a = individual.neighbor_records[r+1]
+                writer.writerow( [r+2, idx, COST, v_decision, v, a] )
+    # print( g.grid[r][3].votes, g.grid[r][3].preference, g.grid[r][3].prev_utilities)
+    print(f'[Election {r+2} Ended] Time Elapsed: {datetime.datetime.now()-start_time}')

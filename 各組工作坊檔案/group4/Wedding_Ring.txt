@@ -1,0 +1,371 @@
+;;; define global variables
+
+globals[
+  time-long    ;-->    the full time long
+  max-age     ;-->    the oldest age
+  full-dist     ;-->    2pi
+  sex-ratio-birth    ;-->    sex-ratio-birth
+  sex-ratio-female    ;-->    sex-ratio-female
+  alpha     ;-->    parameter for social pressure(sp)
+  beta     ;-->    parameter for social pressure(sp)
+  a-bar     ;-->    the width of age interval between gamma and the bound
+  gamma-bar     ;-->    the width for the whole age interval
+  social-network-angle-range     ;-->    defines the angle range, which affects the range of relevant others.
+  number-of-people     ;-->    which is N
+  social-pressure     ;-->    social pressure, same as that one in the article
+  people-of-married     ;-->    the number of married people
+  earliest-marriage-age     ;-->    the earliest marriageable age, in the article is 16
+  ratio-of-marriage     ;-->    the ratio of marriage in US in 1995
+  m     ;-->    same as the m in article
+  max-number-of-people     ;-->    the max number of people
+  die-people     ;-->    number of die people in the moment, we used to balance the number of agents
+  number-of-birth     ;-->    number of birth in that tick
+  total-count     ;-->    I don't know what is this
+]
+
+;;; define variables for agents
+
+turtles-own[
+  sex
+  social-distence
+  marital-status
+  partner
+  partner-social-angle
+  network-size
+]
+
+
+; setup function
+to setup_again
+
+  print(" ----------- 150 years pass ----------- ")
+
+  ;; clear data
+  clear-turtles
+  clear-patches ; x,y
+  clear-drawing
+  clear-all-plots
+  clear-output
+
+  ;; initialize the parameters
+  set total-count 0
+  set time-long 500
+  set max-age 100 ; maximum of the patches x length
+  set full-dist max-pycor ; maximum of the patches y length
+  set sex-ratio-birth 1.048
+  set sex-ratio-female 0.50869
+  set alpha 0.5
+  set beta 7
+  set a-bar 2
+  set gamma-bar (full-dist / 2)
+  set number-of-people 800
+  set social-network-angle-range 0
+  set people-of-married 0
+  set earliest-marriage-age 16
+  set ratio-of-marriage 0.58
+  set m 180 * 180 / number-of-people
+  set max-number-of-people 800
+  set die-people 0
+
+  ;init the initial people, refers to sex-ratio and ratio-of-marriage, set sex and marital status
+  crt number-of-people[
+    set xcor random (max-age + 1) ; xcor is the x of turtle.(angent age)
+    ifelse (random-float 1 < sex-ratio-female) ; range of random variable
+    [set sex 0] ; Female
+    [set sex 1] ; Male
+
+    set ycor random-float 360.0 ; y for agent (angle)
+
+    ; if age > 16 and lucky enough
+    ifelse (xcor >= earliest-marriage-age) and (random-float 1.0 < ratio-of-marriage)
+    [
+      set marital-status true
+      set color green
+      set people-of-married (people-of-married + 1)
+    ]
+    [
+      set marital-status false
+      set color red
+    ]
+  ]
+
+end
+
+; setup function
+to setup
+  clear-all ;;clear all
+  reset-ticks ;;重設計數器
+
+  ;; initialize the parameters
+  set total-count 0
+  set time-long 500
+  set max-age 100 ; maximum of the patches x length
+  set full-dist max-pycor ; maximum of the patches y length
+  set sex-ratio-birth 1.048
+  set sex-ratio-female 0.50869
+  set alpha 0.5
+  set beta 7
+  set a-bar 2
+  set gamma-bar (full-dist / 2)
+  set number-of-people 800
+  set social-network-angle-range 0 ; I didn't found it in the article
+  set people-of-married 0
+  set earliest-marriage-age 16
+  set ratio-of-marriage 0.58 ; I'm not very sure... just guess a number which seems reasonable.
+  set m 180 * 180 / number-of-people
+  set max-number-of-people 800
+  set die-people 0
+
+  ;init the initial people
+  crt number-of-people[
+    set xcor random (max-age + 1) ; xcor is the x of turtle.(angent age)
+    ifelse (random-float 1 < sex-ratio-female) ; range of random variable
+    [set sex 0] ; Female
+    [set sex 1] ; Male
+
+    set ycor random-float 360.0 ; y for agent (angle)
+    ; if age > 16 and lucky enough
+    ifelse (xcor >= earliest-marriage-age) and (random-float 1.0 < ratio-of-marriage)
+    [
+      set marital-status true
+      set color green
+      set people-of-married (people-of-married + 1)
+    ]
+    [
+      set marital-status false
+      set color red
+    ]
+  ]
+
+  ; Clear the test output file, write column headings
+  if (file-exists? "TestOutput_final.csv") [carefully [file-delete "TestOutput_final.csv"] [print error-message]]
+  file-open "TestOutput_final.csv"
+      file-type "sn_angle," ;social-network-angle-range
+      file-type "tick,"
+      file-type "xcor,"
+      file-type "sex,"
+      file-type "type," ; if marriageable
+      file-type "pom,"
+      file-type "social-pressure,"
+      file-type "marital-status,"
+  file-close
+
+end
+
+; go function
+to go
+
+  ;print(" ----------- go ----------- ")
+  print("social-network-angle-range")
+  print(social-network-angle-range)
+
+  ; run for 150 years
+  if ticks >= 150 * 19
+  [
+    file-close
+    stop
+  ]
+
+  ; we adjust social-network-range during the runtime, so we can get some interesting resaults
+  if (remainder ticks 150 / 150) = 0
+  [
+    setup_again
+    set social-network-angle-range (floor (ticks / 150)) * 10
+  ]
+
+  file-open "TestOutput_final.csv"
+
+  ; init die-people in every rounds
+  set die-people 0
+
+  ; flow: age(or die) 0-> define relevant others -> find potential partner -> marriage(?) -> birth
+  ask turtles[
+    aged_or_die
+    set marital-status get_married
+    file-type marital-status file-type ","
+  ]
+  birth
+
+  file-close
+  tick
+
+end
+
+; get aged or die
+to aged_or_die
+  set xcor xcor + 1 ; age increased
+  if xcor > max-age     ; age > 100 -> die
+[
+    set die-people die-people + 1
+    set number-of-people (number-of-people - 1)
+    die
+  ]
+end
+
+to-report get_age_influence ; refers to the figure, we count the pixels and count the ratio approximately
+  if (xcor < 15)[report 0]
+  if (xcor < 21)[report (20 + (xcor - 16) * 50) / 200]
+  if (xcor < 34)[report 200 / 200]
+  if (xcor < 39)[report (20 + 200 - (xcor - 34) * 50) / 200]
+  if (xcor < 59)[report 100 / 200]
+  if (xcor < 65)[report (20 + 100 - (xcor - 60) * 50) / 200]
+  if (xcor >= 65)[report 20 / 200]
+end
+
+;; define relevant others -> find potential partner -> marriage(?)
+to-report get_married
+
+  ; print output
+  file-print " "
+  file-type social-network-angle-range   file-type ","
+  file-type ticks          file-type ","
+  file-type xcor           file-type ","
+  file-type sex           file-type ","
+
+  ; check marital status
+  if marital-status = true [
+    file-type 0         file-type ","; if marriageable
+    file-type ""                       file-type "," ; pom
+    file-type ""                       file-type "," ; social-pressure
+    report true
+  ]
+
+  ; check the agent's age is old enough
+  if xcor < earliest-marriage-age [
+    file-type 0        file-type ",";   if marriageable
+    file-type ""                       file-type "," ; pom
+    file-type ""                       file-type "," ; social-pressure
+    report false
+  ]
+
+  file-type 1  file-type "," ; if marriageable
+
+  ; number of relvant others
+  set network-size other turtles with[
+    xcor > ([xcor] of myself - a-bar) and
+    xcor < ([xcor] of myself + a-bar) and
+    ycor > ([ycor] of myself - social-network-angle-range) and
+    ycor < ([ycor] of myself + social-network-angle-range)
+  ]
+
+  ;file-type count network-size        file-type ","
+
+  if count network-size = 0 [ ; if network size = 0, the agent will not get married
+    file-type ""                       file-type "," ; pom
+    file-type ""                       file-type "," ; social-pressure
+    report false
+  ]
+
+  ; calculate people-of-married and social-pressure
+  let pom (count network-size with [marital-status]) / (count network-size) ; for agent
+  set social-pressure ((exp ((beta * pom) - alpha)) / (1 + (exp ((beta * pom) - alpha))))
+
+  file-type pom                       file-type ","
+  file-type social-pressure           file-type ","
+
+  ; social-pressure should be 0 ~ 0.97 (ratio-of-marriage)
+  ; report is "return", but to have to change into to-reports
+  if random-float 1.0 > social-pressure [
+    report false
+  ]
+
+  ; ai & social-distence
+
+  ; case A
+  ;let ai 0.9
+  ;set social-distence social-pressure * m * ai + 0.03
+
+  ; case B
+  let ai get_age_influence
+  set social-distence (social-pressure * m * ai + 0.03) ; benchmark / case A
+
+  ; case C
+  ;let ai get_age_influence
+  ;set social-distence 0.2
+
+  ; case D
+  ;let ai get_age_influence
+  ;ifelse pom < 0.1
+  ;[set social-distence pom * 0.59]
+  ;[set social-distence pom * 0.41]
+
+  ; age-distence
+  let age-distence social-pressure * ai * 25 ; c= 25
+
+  ; potential-partners
+  let potential-partners network-size with[
+    (sex != [sex] of myself) and
+    (xcor >= earliest-marriage-age) and
+    (marital-status = false) and
+    (ycor < [ycor] of myself + social-distence) and
+    (ycor > [ycor] of myself - social-distence) and
+    (xcor < [xcor] of myself + age-distence) and
+    (xcor > [xcor] of myself - age-distence)
+  ]
+
+  set partner one-of potential-partners
+  if partner = nobody [report false ]
+  
+  ; the agent got married ~ congratulations! 
+  set color green
+  set people-of-married (people-of-married + 2)
+
+  ask partner[
+    set marital-status true
+    set color green
+  ]
+
+  set partner-social-angle [ycor] of partner
+  report true
+end
+
+
+to birth
+
+  ; First, identify reproductive females(married female younger than 40)
+  let moms turtles with [(sex = 0) and (marital-status) and (xcor < 40)]
+
+  ; Now figure out how many moms give birth
+  ;let number-of-births die-people ; number of mom may less than birth
+  let number-of-births (max-number-of-people - number-of-people)
+  if number-of-births > count moms [set number-of-births count moms]
+
+  print("ticks")
+  print(ticks)
+
+  print("moms")
+  print(moms)
+
+  print("die-people")
+  print(die-people)
+  print("number-of-births")
+  print(number-of-births)
+
+  print("number-of-people before")
+  print(number-of-people)
+
+ ; Pick which moms have babies and create the kids
+ ask n-of number-of-births moms
+   [
+     hatch 1
+       [
+         set number-of-people number-of-people + 1
+         set xcor 0
+         set marital-status false
+         set color red
+         ifelse (random-float 2.048 < sex-ratio-birth)
+          [set sex 1]
+          [set sex 0]
+
+         ; The babies get a social angle between their parents'
+         let angle-difference ([partner-social-angle] of myself) - ([ycor] of myself)
+         set ycor [ycor] of myself + random-float angle-difference
+       ]
+    ]
+
+  print("number-of-people after")
+  print(number-of-people)
+
+  ;file-type number-of-people      file-type ","
+
+end

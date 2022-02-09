@@ -1,0 +1,373 @@
+;;;;;;;;;;;;;; GLOBAL VARIABLES ;;;;;;;;;;;;;;
+
+globals
+[
+  ;;; Variables/parameters used in the original model:
+
+  g       ;-->   parameter representing the benefit created for each n peers who work
+  c       ;-->   parameter representing the cost of working for the collective good
+  V       ;-->   group valence (EQ 8. in the paper)
+
+  ;;; Variables/parameters used in the current implementation of the model:
+
+  N       ;-->   number of members in the group
+
+  alpha-random?  ;->   is alpha random? In our model, no
+  alpha  ;-->   alpha in the article
+  negative-incentive?  ;-->    whether the incentive is negative, in our model, no
+  mu  ;-->   mu is the benefit
+  enf  ;-->   enforce cost, the cost of enforcing others work/ shirk
+  lambda  ;-->   lambda is the rival parameter
+  group-size  ;-->   it is a fix number
+  initial-cooperation  ;-->    it is used to set the characteristic of initial group, but we controlled this as 0.5
+  rounds  ;-->    Round for every alpha and mu
+]
+
+;;;;;;;;;;;;;; ACTOR VARIABLES ;;;;;;;;;;;;;;
+
+turtles-own
+[
+  ;;; Variables/parameters used in the original model:
+
+  n_i        ;-->   total number of peers working
+  s_i        ;-->   total number of peers working
+  theta_i    ;-->   a randomly distributed random variable representing actor i's subjective scope of influence
+  n+_i       ;-->   the number of peers that actor i expects to work if she promotes work
+  s+_i       ;-->   the number of peers that actor i expects to shirk if she promotes work
+  n-_i       ;-->   the number of peers that actor i expects to work because of her downward pressure to work
+  s-_i       ;-->   the number of peers that actor i expects to shirk if she opposes work
+  v_i        ;-->   actor i's valence of norm enforcemnt
+  IW_i       ;-->   actor i's value of the inclination to work function (EQ. 4 in the paper)
+  Ppromote_i ;-->   actor i's value of the payoff for promoting function (EQ. 6 in the paper)
+  Poppose_i  ;-->   actor i's value of the payoff for opposing function (EQ. 7 in the paper)
+  working_i  ;-->   actor i's work choice (EQ. 9 in the paper)
+  alpha_i    ;-->   actor-level susceptibility to influence
+]
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;; INITIAL CONDITIONS  ;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to setup
+  ; clear memory
+  clear-all
+
+  ; set the global variables
+  set alpha-random? False ;-->    alpha is not random, as we've mentioned
+  set negative-incentive? False ;-->    negative-incentive is not negative, as we've mentioned
+  set mu 0 ;-->    Begin with mu = 0
+  set enf 2 ;-->    constant e = 2
+  set lambda 0 ;-->    set lambda = 0, and after that lambda = 1
+  set group-size 10 ;-->    fix group-size = 10
+  set alpha 0 ;-->    Begin with alpha = 0
+  set initial-cooperation 50 ;-->    set initial-cooperation = 50, as we've mentioned
+  set rounds 0 ;-->    begin with round = 0
+
+  set-default-shape turtles "person business"   ;; make actors look like business people
+  crt group-size                                ;; create N actors
+
+  ask patches [set pcolor white]                ;; make the world white
+
+;  if alpha-random?                     ;; if alpha is heterogeneous across agents, then run the randomize procedure
+;  [ask turtles [randomize]]
+
+  ask turtles [initial-turtles]  ;; initialize the actors
+
+  reset-ticks ;; reset the ticks
+
+  ; Setup the output file, write column names
+  if(file-exists? "Output.csv")
+  [carefully [file-delete "Output.csv"][print error-message]]
+
+  ; Open file and define the sequence of headings
+  file-open "Output.csv"
+      file-type "alpha,"
+      file-type "mu,"
+      file-type "participation,"
+  file-close
+
+end
+
+
+to initial-turtles
+  initial-conditions                  ;; execute the initial-conditions procedure
+  set N group-size                    ;; set N (group-size) using the slider group-size
+  set theta_i random N                ;; make the variable theta a random integer in the range [0,N-1]
+  set size 2.5                        ;; set the agents' size to 2.5
+  choose-position                     ;; choose a position on the X-Y plane
+end
+
+
+to initial-conditions ;; set initial conditions as declared in the article
+
+  set v_i 0     ;; set valence of norm enforcement to 0 (i.e. abstains)
+  set g 1       ;; set g = 1
+  set c 5       ;; set c = 5
+
+; 看起來 initial cooperation 設置了每個人的初始狀態
+  ifelse (random 100 < initial-cooperation)  ;; ifelse -> if a random number on the [0,99] interval < probability assigned on slider
+  [
+    set working_i 1                        ;; set working_i = 1 (i.e. actor works)
+    if (v_i = 1) [set color 53]             ;; if the actor promotes, make it a dark green actor
+    if (v_i = 0) [set color 65]             ;; if the actor abstains, make it a green actor
+    if (v_i = -1)[set color 68]             ;; if the actor opposes, make it a light green actor
+  ]
+
+  [
+    set working_i 0                        ;; (else) set working_i = 0 (i.e. actor shirks)
+    if (v_i = 1) [set color 13]             ;; if the actor promotes, make it a dark red actor
+    if (v_i = 0) [set color 15]             ;; if the actor abstains, make it a red actor
+    if (v_i = -1)[set color 18]             ;; if the actor opposed, make it a light red actor
+  ]
+
+end
+
+;; In original code, the author use this function, but we will not use in our model.
+;to randomize  ;; randomly make alpha_i a number in the range  (0 , 1)
+;  set alpha_i precision (random-float 1) 2
+;  if (alpha_i = 0)[randomize]
+;end
+
+to choose-position  ;; this procedure only accomplishes visualization-related goals, as such it can be ignored
+
+  set xcor (-16 + (15 - (-16)) * (theta_i - 0) / ((N - 1) - 0))  ;; position actors on the x-axis using theta_i. In general, to rescale a variable: nx = nx1 + (nx2 - nx1) * (x - minx)/(maxx - minx), were nx1 = new min; nx2 = new max; minx = old min; maxx = old max
+  ifelse (not alpha-random?)
+  [set ycor (-16 + (15 - (-16)) * (random 1 - 0) / (1 - 0))]    ;; position actors on the y-axis. If alpha is not random, use the variable alpha; otherwise use the variable alpha_i
+  [set ycor (-16 + (15 - (-16)) * (alpha_i - 0) / (1 - 0))]
+  if (count turtles-here > 1)     ;; if more than 1 turtle is located in a given spot/patch, the newcomer turtle moves a little bit up and to the right.
+  [set ycor (ycor + (precision (random-float 1) 1))
+  set xcor (xcor + (precision (random-float 1) 1))]
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;; THE ACTUAL MODEL  ;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to go
+
+  ;; open the file
+  file-open "Output.csv"
+
+  ;; next row
+  file-print " "
+  file-type alpha        file-type ","    ;; add alpha to the row
+  file-type mu        file-type ","    ;; add mu to the row
+
+  ;; while rounds < 250 (rounds starts from 0), do:
+  while [rounds < 250]
+  [
+    ;; Take one actor as the first one, the actor will not work, and be abstain.
+    let the-first-guy one-of turtles
+    ask the-first-guy
+    [
+      set theta_i -1
+      set working_i 0
+      set v_i 0
+      set color 15
+    ]
+
+    ask turtles  ;; all actors will execute the following procedures (this the actual model!)
+    [
+      if theta_i != -1  ;; if the actor is not "the-first-guy", do:
+      [
+        compute-peers-currently-working
+        compute-inclination-to-work
+        compute-group-valence
+        choose-to-work-or-shirk
+        compute-payoff-for-promoting
+        compute-payoff-for-opposing
+        choose-to-promote-or-abstain-or-oppose
+      ]
+    ]
+    
+    file-type participation        file-type ","    ; add participation to the output file
+
+    ;; reset the characteristic of every actor
+    ask turtles[initial-turtles]
+
+    set rounds rounds + 1
+  ]
+
+
+  ;; equals to nest for loop, mu and alpha, alpha is in the range of [0, 0.98], mu is in the range of [0, 50]
+  set alpha alpha + 0.02
+  if alpha > 0.99 [
+    set alpha 0
+    set mu mu + 1
+  ]
+  if (mu >= 51) [
+    file-close
+    stop
+  ]
+
+  ;; reset everything
+  setup_again
+
+  ;;file close
+  file-close
+
+  tick ; advance time
+end
+
+to setup_again
+
+  ;; reset rounds, patches, agents and drawing
+  set rounds 0
+  clear-patches
+  clear-turtles
+  clear-drawing
+
+  crt group-size ;; create N actors
+  ask patches [set pcolor white] ;; make the world white
+
+  ask turtles[initial-turtles]
+
+end
+
+to compute-peers-currently-working
+  set n_i count other turtles with [working_i = 1] ;; count peers working
+  set s_i (N - 1 - n_i )                           ;; count peers shirking
+end
+
+to compute-inclination-to-work
+  ifelse negative-incentive?
+  [set IW_i ((g - c) + mu * (1 - lambda * (s_i / (s_i + 1))))]   ;; see equation 4 in the text
+  [set IW_i ((g - c) + mu * (1 - lambda * (n_i / (n_i + 1))))]
+end
+
+to compute-group-valence
+  set V (count turtles with [v_i = -1] * -1) + (count turtles with [v_i = 1]) ;; see equation 8 in the text
+end
+
+
+to choose-to-work-or-shirk
+  ifelse (not alpha-random?)   ;; ifelse alpha is homogeneous:
+  [
+    ifelse (alpha * V + ((1 - alpha) * IW_i) > 0)    ;; compute actor i's decision to work and store the result in the global variable alpha, see equation 9 in the text
+    [set working_i 1]
+    [set working_i 0]
+  ]
+
+  [
+    ifelse (alpha_i * V + ((1 - alpha_i) * IW_i) > 0) ;; (else) compute actor i's decision to work and store the result in the actor-level variable alpha_i, see equation 9 in the text
+    [set working_i 1]
+    [set working_i 0]
+  ]
+end
+
+to compute-payoff-for-promoting    ; equation 6 in the article
+  ifelse ((n_i + theta_i) <= N - 1)  ;; compute the number of peers that actor i expects to work if she promotes work [n+_i = min(n + theta_i, N - 1)]
+  [set n+_i (n_i + theta_i)]
+  [set n+_i N - 1]
+
+  set s+_i (N - 1 - n+_i)            ;; compute the number of peers that actor i expects to shirk if she promotes work
+
+  ifelse negative-incentive?
+  [
+    ifelse working_i = 0    ; if shirking:
+    [set Ppromote_i ((s_i - s+_i) * g - ((s_i / (s_i + 1)) - (s+_i / (s+_i + 1))) * lambda * mu - enf)] ;; actor i pays attention to peers' contribution to work, enforce cost, and loss of incentive to fellow workers
+    [set Ppromote_i ((s_i - s+_i) * g - enf)]  ;; (else) if shirking, only pays attention to peers' contribution to work, and enforce cost
+  ]
+
+  [
+    ifelse working_i = 1    ; if working:
+    [set Ppromote_i ((n+_i - n_i) * g - ((n+_i / (n+_i + 1)) - (n_i / (n_i + 1))) * lambda * mu - enf)] ;; actor i pays attention to peers' contribution to work, enforce cost, and loss of incentive to fellow workers
+    [set Ppromote_i ((n+_i - n_i) * g - enf)]  ;; (else) if working, only pays attention to peers' contribution to work, and enforce cost
+  ]
+end
+
+to compute-payoff-for-opposing   ;; equation 7 in the article
+  ifelse ((n_i - theta_i) >= 0)     ;; compute the number of peers that actor i expects to work if she opposes work [n-_i = max(n - theta_i, 0)]
+  [set n-_i (n_i - theta_i)]
+  [set n-_i 0]
+
+  set s-_i (N - 1 - n-_i)          ;; compute the number of peers that actor i expects to shirk if she opposes work
+
+  ifelse negative-incentive?
+  [
+    ifelse working_i = 0    ; if shirking:
+    [set Ppromote_i ((s_i - s-_i) * g - ((s_i / (s_i + 1)) - (s-_i / (s-_i + 1))) * lambda * mu - enf)] ;; actor i pays attention to peers' contribution to work, enforce cost, and loss of incentive to fellow workers
+    [set Ppromote_i ((s_i - s-_i) * g - enf)]  ;; (else) if shirking, only pays attention to peers' contribution to work, and enforce cost
+  ]
+
+  [
+    ifelse working_i = 1   ; if working:
+    [set Poppose_i ((n-_i - n_i) * g - ((n-_i / (n-_i + 1)) - (n_i / (n_i + 1))) * lambda * mu - enf)] ;; actor i pays attention to peers' contribution to work, enforce cost, and loss of incentive to fellow workers
+    [set Poppose_i ((n-_i - n_i) * g - enf)]  ;; (else) if working, only pays attention to peers' contribution to work, and enforce cost
+  ]
+end
+
+to choose-to-promote-or-abstain-or-oppose
+  ifelse ((Ppromote_i >  Poppose_i) and (Ppromote_i >= enf))  ;; if enforcing the preferred norm promises to bring an expected benefit that exceeds the cost, she will enforce [i.e. promote = (v_i = 1)]
+  [
+    set v_i 1             ;; promote the norm
+    ifelse working_i = 1   ;; if working:
+    [set color 53]         ;; turn dark green
+    [set color 13]         ;; (else) turn dark red
+ ]
+
+  [
+    ifelse ((Poppose_i >  Ppromote_i) and (Poppose_i >= enf))  ;; (else) if opposing the preferred norm promises to bring an expected benefit that exceeds the cost, she will oppose [i.e. oppose = (v_i = - 1)]
+    [
+     set v_i -1           ;; oppose the norm
+    ifelse working_i = 1  ;; if working:
+    [set color 68]        ;; turn light green
+    [set color 18]        ;; (else) turn light red
+  ]
+
+  [                                                          ;; (else) if neither enforcing nor oppossing promotes to bring an expected benefit that exceeds the cost, she will abstain [i.e. abstain = (v_i = 0)]
+    set v_i 0            ;; abstain to enforce/oppose the norm
+    ifelse working_i = 1  ;; if working:
+    [set color 65]        ;; turn green
+    [set color 15]        ;; (else) turn red
+  ]
+ ]
+end
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;; MODEL ENDS HERE ;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; create some reports to calculuate the dependent variable and make the plot shown in the interface
+
+to-report participation
+  report (count turtles with [working_i = 1]) / count turtles      ;; compute the D.V.: proportion participating/working
+end
+
+to-report work-promote
+  report ((count turtles with [working_i = 1 and v_i = 1]) / count turtles) * 100  ;; compute the % of actors currrently working and promoting
+end
+
+to-report work-abstain
+  report ((count turtles with [working_i = 1 and v_i = 0]) / count turtles) * 100  ;; compute the % of actors currrently working and abstaining
+end
+
+to-report work-oppose
+  report ((count turtles with [working_i = 1 and v_i = -1]) / count turtles) * 100 ;; compute the % of actors currrently working and opposing
+end
+
+to-report shirk-promote
+  report ((count turtles with [working_i = 0 and v_i = 1]) / count turtles) * 100  ;; compute the % of actors currrently shirking and promoting
+end
+
+to-report shirk-abstain
+  report ((count turtles with [working_i = 0 and v_i = 0]) / count turtles) * 100  ;; compute the % of actors currrently shirking and abstaining
+end
+
+to-report shirk-oppose
+  report ((count turtles with [working_i = 0 and v_i = -1]) / count turtles) * 100 ;; compute the % of actors currrently shirking and opposing
+end
+
+
+;; Collective Action, Rival Incentives, and the Emergence of Antisocial Norms.
+;; Code for the model in Kitts 2006
+;; Code Written by Diego F. Leal (www.diegoleal.info)
+;; All rights reserved
+;; Last updated: July 2018;;;;;;;;;;;;;; GLOBAL VARIABLES ;;;;;;;;;;;;;;
