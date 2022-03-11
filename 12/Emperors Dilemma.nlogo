@@ -353,7 +353,7 @@ Initial_Believers
 Initial_Believers
 0
 population
-300.0
+800.0
 100
 1
 NIL
@@ -411,7 +411,7 @@ Influence_Range
 Influence_Range
 1
 20
-10.0
+8.0
 1
 1
 NIL
@@ -424,8 +424,8 @@ SLIDER
 178
 K
 K
-0
-.5
+0.125
+0.125
 0.125
 .005
 1
