@@ -202,7 +202,7 @@ public class simple_model extends Thread{
 			if (largest_do<temp_do) largest_do=temp_do;
 			if (smallest_abs_do>temp_abs_do) smallest_abs_do=temp_abs_do;
 			if (smallest_do>temp_do) smallest_do=temp_do;
-		}				
+		}			
 		double [] results = new double[9];
 		results[0]=abs_corr;
 		results[1]=corr;
