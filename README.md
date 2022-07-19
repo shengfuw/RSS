@@ -2,8 +2,6 @@
 
 重製過去以電腦進行社會模擬之經典研究。Author: Sheng Fu, Wang. 
 
-**結果：https://social-simulation-workshop.atlassian.net/wiki/spaces/SSW/overview?homepageId=98504**
-
 ### Papers
 
 1. Macy, M. W. (1991). Chains of cooperation: Threshold effects in collective action. *American Sociological Review, 56*(6), 730-747.
