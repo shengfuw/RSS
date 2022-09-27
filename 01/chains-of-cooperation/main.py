@@ -1,39 +1,40 @@
-import argparse
-import csv
-import itertools
 import os
-import math
-import matplotlib.pyplot as plt
-import multiprocessing
+import csv
+import argparse
+import itertools
+from tkinter import Y
+from turtle import shape
 import numpy as np
+import matplotlib.pyplot as plt
+from args import ArgsModel
 from scipy.stats import truncnorm
 
-from args import ArgsModel
+N_RANDOM_TRAILS = 100 
+# N_RANDOM_TRAILS = 3
+RAMOM_SEED = 123
+COLORS = ["red", "blue"]
+CWD = os.path.dirname(os.path.abspath(__file__))
 
-
-def get_truncated_normal(mean=0, sd=1, low=0, upp=10):
-    return truncnorm(
-        (low - mean) / sd, (upp - mean) / sd, loc=mean, scale=sd)
-
+def get_truncated_normal(mean=0, sd=1, low=0, upp=np.inf):
+    return truncnorm((low - mean) / sd, (upp - mean) / sd, loc=mean, scale=sd)
 
 class Agent(object):
     _ids = itertools.count(0)
 
     def __init__(self, args) -> None:
         super().__init__()
-        
         self.id = next(self._ids)
 
-        self.thres = None
-        self.M = args.M
-        self.net = None
-        self.R = None
-        self.I = None
-        self.E = None
+        self.thres = None # Thershold
+        self.net = None # Networkd
+        self.R = None # Resource
+        self.I = None # Interest
+        self.E = None # Learning rate
+        self.M = args.M # Slope parameter
 
-        self.S = 0
-        self.O = 0
-        self.is_volunteer = False
+        self.S = 0 # Share of the public goods
+        self.O = 0 # Outcomed
+        self.is_volunteer = False # Decide to participate if Ture
     
     @staticmethod
     def draw(p):
@@ -48,23 +49,15 @@ class Agent(object):
         self.net.append(ag)
     
     def to_volunteer(self, pi) -> None:
-        #print("agent {} | pi = {:4f}".format(("  "+str(self.id))[-3:], pi))
-        if self.thres == 1 and pi == 0:
-            self.is_volunteer = False
-        elif self.thres == 0 and pi == 1:
-            self.is_volunteer = True
-        else:
-            p = 1/(1+math.exp(self.M * (self.thres - pi)))
-            self.is_volunteer = self.draw(p)
+        prob = 1 / (1 + np.exp((self.thres - pi)*self.M)) # Formula (1)
+        self.is_volunteer = self.draw(prob)
     
     def get_net_pi(self):
         if self.net is None:
             raise TypeError("haven't initialized social net for the agent.")
-        return sum([1 for ag in self.net if ag.is_volunteer]) / len(self.net)
-    
+        return sum([ag.is_volunteer for ag in self.net]) / len(self.net) 
 
 class PublicGoodsGame(object):
-
     def __init__(self, args: argparse.ArgumentParser, verbose=True) -> None:
         super().__init__()
         Agent._ids = itertools.count(0)
@@ -75,18 +68,18 @@ class PublicGoodsGame(object):
             print("Args: {}".format(args))
 
         self.ags = self.init_ags(args)
-        self.global_pi = self._get_global_pi()
 
-        self.total_R = sum([ag.R for ag in self.ags])
+        self.total_R = sum([ag.R for ag in self.ags]) # Total resource
+        self.global_pi = self._get_global_pi()
         self.global_R_ratio = self._get_global_R_ratio()
 
         self.R_ratio_list = list()
         self.R_ratio_list.append(self.global_R_ratio)
 
-        self.L = 0
+        self.L = 0 # Level of production
     
     @staticmethod
-    def get_thres(thres_type: str, mean=0.5, sd=0.1):
+    def get_thres(thres_type: str, mean=0.5, sd=0.1): # Initial threshold for every agent
         if thres_type == "all_defector":
             return 1.
         elif thres_type == "uniform":
@@ -97,8 +90,12 @@ class PublicGoodsGame(object):
     @staticmethod
     def get_RI(R_type, I_type, corr_RI, mean=1, sd=0.5):
         if R_type == "normal" and I_type == "normal":
-            x1 = get_truncated_normal(mean=mean, sd=sd, low=0, upp=np.inf).rvs()
-            x2 = get_truncated_normal(mean=mean, sd=sd, low=0, upp=np.inf).rvs()
+            ################ Q3, Q4-2 #################
+            x1 = get_truncated_normal(mean=mean, sd=sd, low=0, upp=np.inf).rvs() # R default
+            x2 = get_truncated_normal(mean=mean, sd=sd, low=0, upp=np.inf).rvs() # I default
+            # x1 = get_truncated_normal(mean=mean, sd=.1, low=0, upp=np.inf).rvs()
+            # x2 = get_truncated_normal(mean=mean, sd=.1, low=0, upp=np.inf).rvs()
+            #########################################
             if corr_RI == "orthogonal":
                 return float(x1), float(x2)
             elif corr_RI == "pos":
@@ -112,7 +109,10 @@ class PublicGoodsGame(object):
             raise TypeError("haven't coded distributions other than normal.")
     
     @staticmethod
-    def get_E(E_type, mean=0.5, sd=0.1):
+    ################# Q3 #################
+    def get_E(E_type, mean=0.5, sd=0.5): # default
+    # def get_E(E_type, mean=0, sd=1): 
+    ######################################
         if E_type == "normal":
             return get_truncated_normal(mean=mean, sd=sd, low=0, upp=1).rvs()
     
@@ -162,7 +162,18 @@ class PublicGoodsGame(object):
         if self.verbose:
             self.check_distribution(ags)
 
-        # build network (undirected graph)
+        ############### Q4-1 ###############
+        ## default ##
+        total_R = sum([ag.R for ag in ags])
+        for ag in ags:
+            ag.R = ag.R / total_R
+        #############
+        # max_R = max([ag.R for ag in ags])
+        # for ag in ags:
+        #     ag.R = ag.R / max_R
+        ####################################
+
+        # Build network (undirected graph)
         if args.net_group == "strong":
             n_ag_ctr = 0
             for n_ag_gp in self.get_group_dis_n(args.N):
@@ -178,17 +189,19 @@ class PublicGoodsGame(object):
         return ags   
 
     def _get_global_pi(self):
-        return sum([1 for ag in self.ags if ag.is_volunteer]) / self.args.N
+        return sum([ag.is_volunteer for ag in self.ags]) / self.args.N
     
     def _get_global_R_ratio(self):
         return sum([ag.R for ag in self.ags if ag.is_volunteer]) / self.total_R
     
     def get_ag_pi(self, ag:Agent):
-        # paper: pi is "the participation rate"
         if self.args.net_group == "parallel":
             return 0.5
         elif self.args.net_group == "serial":
-            return self.global_pi
+            ######### Q2 #########
+            return self._get_global_pi() # default: synchronous
+            # return self.global_pi # asynchronous
+            ######################
         elif self.args.net_group in {"strong", "weak"}:
             return ag.get_net_pi()
 
@@ -208,11 +221,16 @@ class PublicGoodsGame(object):
         self.global_R_ratio = self._get_global_R_ratio()
 
         # 3.
-        # paper: pi is "the rate of contribution"
-        self.L = 1/(1+math.exp(10*(0.5-self.global_R_ratio))) - (1-self.args.X)/2
+        ############## Q1-2 ##############
+        # Formula 3 
+        self.L = 1/(1 + np.exp((.5-self.global_pi)*10)) - (1-self.args.X)/2 # default
+        # self.L = 1/(1 + np.exp((.5-self.global_R_ratio)*10)) - (1-self.args.X)/2 
+        ##################################
         S_max = -np.inf
         for ag in self.ags:
-            S_ij = self.L*self.total_R*ag.I/(self.total_R**(1-self.args.J)) - int(ag.is_volunteer)*ag.R
+            # Value of j's share
+            S_ij = self.L*self.total_R*ag.I/(self.total_R**(1-self.args.J)) - int(ag.is_volunteer)*ag.R 
+            # Standardized outcome
             O_ij = ag.E * (2*S_ij - ag.S)
             S_max = max(S_max, abs(S_ij))
             ag.S = S_ij
@@ -247,76 +265,124 @@ class PublicGoodsGame(object):
             print("| iter   0 | pi = {:.4f}; R = {:.4f}; L = {:.4f}".format(self.global_pi, self.global_R_ratio, self.L))
         for iter in range(1, self.args.n_iter+1):
             self.simulate_iter()
-            self.R_ratio_list.append(self.global_R_ratio) # pi: the rate of contribution
+            ##############  Q1-1 ##############
+            self.R_ratio_list.append(self.global_pi) # default
+            # self.R_ratio_list.append(self.global_R_ratio) 
+            ###################################
             if self.verbose and iter % log_v == 0:
                 print("| iter {} | pi = {:.4f}; R = {:.4f}; L = {:.4f}".format(("  "+str(iter))[-3:], self.global_pi, self.global_R_ratio, self.L))
     
     def get_pi_list(self):
         return np.array(self.R_ratio_list)
 
+########## Some utilities ##########
+def save_to_csv(record_data, file_name):
+    output_dir = os.path.join(CWD, "csvfiles")
+    if not os.path.isdir(output_dir):
+        os.makedirs(output_dir)
 
-class PlotLinesHandler(object):
+    with open('{file_path}.csv'.format(file_path=os.path.join(output_dir, file_name)), 'w') as csv_file:
+        writer = csv.writer(csv_file)
+        for row in record_data:
+            writer.writerow(row)
 
-    def __init__(self, xlabel, ylabel, ylabel_show,
-        figure_size=(9, 9), output_dir=os.path.join(os.getcwd(), "imgfiles")) -> None:
-        super().__init__()
+def save_plot(file_name, fig, ax, n_iter):
+    output_dir = os.path.join(CWD, "imgfiles")
+    if not os.path.isdir(output_dir):
+        os.makedirs(output_dir)
 
-        self.output_dir = output_dir
-        self.title = "{}-{}".format(ylabel, xlabel)
-        self.legend_list = list()
+    ax.set_ylim(-.03, 1) 
+    ax.set_xlim(-1, n_iter)
+    ax.set_yticks(np.arange(0, 1.01, .1))
+    ax.set_xticks(np.arange(0, n_iter+1, int(n_iter/5)))
+    ax.yaxis.set_major_formatter(lambda x, pos: f'{x:.3f}'.strip('0').rstrip('.') if x != 0 else 0)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
 
-        plt.figure(figsize=figure_size, dpi=80)
-        plt.title("{} - {}".format(ylabel_show, xlabel))
-        plt.xlabel(xlabel)
-        plt.ylabel(ylabel_show)
-        ax = plt.gca()
-        ax.set_ylim([0., 1.])
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys())
 
-    def plot_line(self, data, legend,
-        linewidth=1, color="", alpha=1.0):
-        self.legend_list.append(legend)
-        if color:
-            plt.plot(np.arange(data.shape[-1]), data,
-                linewidth=linewidth, color=color, alpha=alpha)
-        else:
-            plt.plot(np.arange(data.shape[-1]), data, linewidth=linewidth)
+    # fig.set_facecolor('white')
+    plt.savefig(output_dir+'/'+file_name+'.png') 
 
-    def save_fig(self, title_param="", add_legend=True, title_lg=""):
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
-        
-        if add_legend:
-            plt.legend(self.legend_list)
-            title_lg = "_".join(self.legend_list)
-        fn = "_".join([self.title, title_lg, title_param]) + ".png"
-            
-        plt.savefig(os.path.join(self.output_dir, fn))
-        print("fig save to {}".format(os.path.join(self.output_dir, fn)))
+def plot_result(record_data, file_name, alpha=.1):
+    types = list(np.unique(np.array(record_data)[:, 0]))
+    fig, ax = plt.subplots(1, 1, figsize=(11, 7))
+    for row in record_data:
+        row_type, row_data = row[0], row[1:]
+        ax.plot(row_data, label=row_type, color=COLORS[types.index(row_type)], alpha=alpha)
+    
+    save_plot(file_name, fig, ax, len(record_data[0]))
 
+def plot_result_mean(record_data, file_name, alpha=.85):
+    record_data = np.array(record_data)
+    types = list(np.unique(record_data[:, 0]))
+    fig, ax = plt.subplots(1, 1, figsize=(11, 7))
+    for t in types:
+        t_data = record_data[record_data[:,0]==t, 1:].astype(float)
+        y = np.mean(t_data, axis=0)
+        ci = 0.05 * np.std(y) / np.mean(y)
+        ax.plot(y, label=t, color=COLORS[types.index(t)], alpha=alpha)
+        plt.fill_between(np.arange(0, len(y)), (y-ci), (y+ci), color=COLORS[types.index(t)], alpha=0.05)
 
-N_RANDOM_TRAILS = 10
-COLORS = ["red", "blue"]
+    save_plot(file_name+'_mean', fig, ax, len(record_data[0]))
+
 
 if __name__ == "__main__":
+    np.random.seed(RAMOM_SEED)
     parser = ArgsModel()
-    
-    ## multiple trails on one condition
-    custom_legend = "Pos vs. Neg"
+
+    exp = ""
+
+    ############## Multiple trails ##############
+    ## Figure 1
     args_dict = parser.get_fig_args(1)
-    plot_line_hd = PlotLinesHandler(xlabel="Iteration", ylabel="pi",
-                                    ylabel_show="Level of Contribution "+r"$\pi$")
+    record_data = list()
     for n_trail in range(N_RANDOM_TRAILS):
         for args_ctr, (exp_legend, exp_args) in enumerate(args_dict.items()):
-            print("| trail {}/{} |".format(n_trail+1, N_RANDOM_TRAILS))
-            np.random.seed(seed=exp_args.seed+n_trail)
+            # print("| trail {}/{} |".format(n_trail+1, N_RANDOM_TRAILS))
             game = PublicGoodsGame(exp_args, verbose=False)
             game.simulate()
-            plot_line_hd.plot_line(game.get_pi_list(), "",
-                color=COLORS[args_ctr], alpha=0.15)
-            param = "N_{}_T_{}_ntrails_{}".format(exp_args.N, exp_args.thres_type, N_RANDOM_TRAILS)
-    plot_line_hd.save_fig(param, add_legend=False, title_lg=custom_legend)
+            record_data.append([exp_args.net_group] + list(game.get_pi_list()))
+    file_name = exp + "Fig1_ntrails_{}".format(N_RANDOM_TRAILS)
+    save_to_csv(record_data, file_name)
+    plot_result(record_data, file_name)
+    plot_result_mean(record_data, file_name)
+    print(exp+'FIG1 done!')
 
-    # ## figure 1
+    ## Figure 2
+    args_dict = parser.get_fig_args(2)
+    record_data = list()
+    for n_trail in range(N_RANDOM_TRAILS):
+        for args_ctr, (exp_legend, exp_args) in enumerate(args_dict.items()):
+            # print("| trail {}/{} |".format(n_trail+1, N_RANDOM_TRAILS))
+            game = PublicGoodsGame(exp_args, verbose=False)
+            game.simulate()
+            record_data.append([exp_args.net_group] + list(game.get_pi_list()))
+    file_name = exp + "Fig2_ntrails_{}".format(N_RANDOM_TRAILS)
+    save_to_csv(record_data, file_name)
+    plot_result(record_data, file_name)
+    plot_result_mean(record_data, file_name)
+    print(exp+'FIG2 done!')
+
+    ## Figure 5
+    # args_dict = parser.get_fig_args(5)
+    # record_data = list()
+    # for n_trail in range(N_RANDOM_TRAILS):
+    #     for args_ctr, (exp_legend, exp_args) in enumerate(args_dict.items()):
+    #         # print("| trail {}/{} |".format(n_trail+1, N_RANDOM_TRAILS))
+    #         game = PublicGoodsGame(exp_args, verbose=False)
+    #         game.simulate()
+    #         record_data.append([exp_args.corr_RI] + list(game.get_pi_list()))
+    # file_name = exp + "Fig5_ntrails_{}".format(N_RANDOM_TRAILS)
+    # save_to_csv(record_data, file_name)
+    # plot_result(record_data, file_name)
+    # plot_result_mean(record_data, file_name)
+    # print(exp+'FIG5 done!')
+
+    ############### Single trail ###############
+    ## Figure 1
     # args_dict = parser.get_fig_args(1)
     # plot_line_hd = PlotLinesHandler(xlabel="Iteration", ylabel="pi",
     #                                 ylabel_show="Level of Contribution "+r"$\pi$")
@@ -328,7 +394,7 @@ if __name__ == "__main__":
     #     param = "N_{}_T_{}".format(exp_args.N, exp_args.thres_type)
     # plot_line_hd.save_fig(param)
 
-    # ## figure 2
+    ## Figure 2
     # args_dict = parser.get_fig_args(2)
     # plot_line_hd = PlotLinesHandler(xlabel="Iteration", ylabel="pi",
     #                                 ylabel_show="Level of Contribution "+r"$\pi$")
@@ -339,3 +405,23 @@ if __name__ == "__main__":
     #     plot_line_hd.plot_line(game.get_pi_list(), exp_legend)
     #     param = "N_{}_T_{}".format(exp_args.N, exp_args.thres_type)
     # plot_line_hd.save_fig(param)
+
+    # Some notes:
+    # Q1-1 最後的指標到底是 人數比率 還是 contribution 的比率？
+    # Q1-2 formula 3 裡的 pi 是 "rate of contribution." 到底是「參加的比例」還是「所有資源中被貢獻出來的比率」
+    # Q2 participation rate 是當下還是現在？ （Try this!）
+    # 5. E 的分佈：normal, [0, 1]
+
+    # 2. 對於 R 的理解？ 我現在理解應該是「加總等於 1 的 normal distribution」? N 是 total resource 還是 人數？
+    # 6. Smax ???
+    # 7. 均衡狀態的條件 ???
+   
+    # (x)
+    # 確認 strong, weak network type
+    # 確認 RI correlation 的設定
+
+    # (V)
+    # 確認各 Fig 的 threshold 初始化 -> Fig1, 2, 5 一開始都是1
+    # 把資料儲存起來，在畫成圖
+    # C=[0,1] 的地方都寫錯，應該是 V=[0,1]。這是因為受到舊版的影響。
+    # random seed = 123

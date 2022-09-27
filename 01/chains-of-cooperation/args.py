@@ -70,7 +70,7 @@ class ArgsModel(object):
             help="# of iterations.")
         parser.add_argument("--figNo", type=int, default=0,
             help="the figure to replicate. 0 for custom parameters.")
-        parser.add_argument("--seed", type=int, default=1025,
+        parser.add_argument("--seed", type=int, default=123,
             help="random seed.")
         return parser
 
@@ -80,11 +80,11 @@ class ArgsModel(object):
         args.figNo = figNo
         if figNo == 1:
             args.N = 100
-            args.thres_type = "uni"
+            args.thres_type = "all_defector"
             args.div = False
             args.X = 0.
             args.J = 0.5
-            args.n_iter = 200
+            args.n_iter = 50
 
             args.R_type = "normal"
             args.I_type = "normal"
@@ -99,11 +99,11 @@ class ArgsModel(object):
         
         if figNo == 2:
             args.N = 100
-            args.thres_type = "normal"
+            args.thres_type = "all_defector"
             args.div = False
             args.X = 0.
             args.J = 0.5
-            args.n_iter = 200
+            args.n_iter = 50
 
             args.R_type = "normal"
             args.I_type = "normal"
@@ -118,11 +118,11 @@ class ArgsModel(object):
         
         if figNo == 5:
             args.N = 100
-            args.thres_type = "uniform"
+            args.thres_type = "all_defector"
             args.div = False
             args.X = 0.
             args.J = 0.5
-            args.n_iter = 200
+            args.n_iter = 50
 
             args.R_type = "normal"
             args.I_type = "normal"
@@ -142,8 +142,7 @@ class ArgsModel(object):
             return {custom_legend: args}
         else:
             return self.set_fig_param(args, args.figNo)
-    
-    
+
     def get_fig_args(self, figNo:int) -> dict:
         args = self.parser.parse_args()
         return self.set_fig_param(args, figNo)
