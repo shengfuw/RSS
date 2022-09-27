@@ -26,15 +26,15 @@ class Agent(object):
         self.id = next(self._ids)
 
         self.thres = None # Thershold
-        self.net = None # Networkd
+        self.net = None # Network
         self.R = None # Resource
         self.I = None # Interest
         self.E = None # Learning rate
         self.M = args.M # Slope parameter
 
         self.S = 0 # Share of the public goods
-        self.O = 0 # Outcomed
-        self.is_volunteer = False # Decide to participate if Ture
+        self.O = 0 # Outcome
+        self.is_volunteer = False # Whether to participate 
     
     @staticmethod
     def draw(p):
@@ -49,7 +49,7 @@ class Agent(object):
         self.net.append(ag)
     
     def to_volunteer(self, pi) -> None:
-        prob = 1 / (1 + np.exp((self.thres - pi)*self.M)) # Formula (1)
+        prob = 1 / (1 + np.exp((self.thres - pi)*self.M)) # Formula 1
         self.is_volunteer = self.draw(prob)
     
     def get_net_pi(self):
@@ -151,7 +151,7 @@ class PublicGoodsGame(object):
     def init_ags(self, args: argparse.ArgumentParser) -> list:
         ags = list()
 
-        # built agents
+        # Built agents
         for _ in range(args.N):
             ag = Agent(args)
             thres = self.get_thres(args.thres_type)
@@ -199,8 +199,8 @@ class PublicGoodsGame(object):
             return 0.5
         elif self.args.net_group == "serial":
             ######### Q2 #########
-            return self._get_global_pi() # default: synchronous
-            # return self.global_pi # asynchronous
+            # return self._get_global_pi() # default: synchronous
+            return self.global_pi # asynchronous
             ######################
         elif self.args.net_group in {"strong", "weak"}:
             return ag.get_net_pi()
@@ -229,9 +229,9 @@ class PublicGoodsGame(object):
         S_max = -np.inf
         for ag in self.ags:
             # Value of j's share
-            S_ij = self.L*self.total_R*ag.I/(self.total_R**(1-self.args.J)) - int(ag.is_volunteer)*ag.R 
+            S_ij = self.L*self.total_R*ag.I/(self.total_R**(1-self.args.J)) - int(ag.is_volunteer)*ag.R # formula 4
             # Standardized outcome
-            O_ij = ag.E * (2*S_ij - ag.S)
+            O_ij = ag.E * (2*S_ij - ag.S) # formula 5
             S_max = max(S_max, abs(S_ij))
             ag.S = S_ij
             ag.O = O_ij
@@ -245,7 +245,8 @@ class PublicGoodsGame(object):
             t_increase = ag.O * (1 - ag.thres**(1/abs(ag.O)))
             t_drop = 0 if np.isnan(t_drop) else t_drop
             t_increase = 0 if np.isnan(t_increase) else t_increase
-
+            
+            # formula 6
             # threshold drops
             if ag.is_volunteer and ag.O>0:
                 ag.thres -= t_drop
@@ -333,7 +334,7 @@ if __name__ == "__main__":
     np.random.seed(RAMOM_SEED)
     parser = ArgsModel()
 
-    exp = ""
+    exp = "Q2_"
 
     ############## Multiple trails ##############
     ## Figure 1
@@ -407,14 +408,13 @@ if __name__ == "__main__":
     # plot_line_hd.save_fig(param)
 
     # Some notes:
-    # Q1-1 最後的指標到底是 人數比率 還是 contribution 的比率？
-    # Q1-2 formula 3 裡的 pi 是 "rate of contribution." 到底是「參加的比例」還是「所有資源中被貢獻出來的比率」
-    # Q2 participation rate 是當下還是現在？ （Try this!）
-    # 5. E 的分佈：normal, [0, 1]
-
-    # 2. 對於 R 的理解？ 我現在理解應該是「加總等於 1 的 normal distribution」? N 是 total resource 還是 人數？
-    # 6. Smax ???
-    # 7. 均衡狀態的條件 ???
+    # 最後的指標到底是 人數比率 還是 contribution 的比率？
+    # formula 3 裡的 pi 是 "rate of contribution." 到底是「參加的比例」還是「所有資源中被貢獻出來的比率」
+    # participation rate 是當下還是現在？ （Try this!）
+    # E 的分佈：normal, [0, 1]
+    # 對於 R 的理解？ 我現在理解應該是「加總等於 1 的 normal distribution」? N 是 total resource 還是 人數？
+    # Smax ???
+    # 均衡狀態的條件 ???
    
     # (x)
     # 確認 strong, weak network type
@@ -422,6 +422,6 @@ if __name__ == "__main__":
 
     # (V)
     # 確認各 Fig 的 threshold 初始化 -> Fig1, 2, 5 一開始都是1
-    # 把資料儲存起來，在畫成圖
-    # C=[0,1] 的地方都寫錯，應該是 V=[0,1]。這是因為受到舊版的影響。
-    # random seed = 123
+    # 把資料儲存起來，再畫成圖
+    # C=[0,1] 的地方都寫錯，應該是 V=[0,1]。這是因為受到舊版的影響?
+    # rnd seed = 123
