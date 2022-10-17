@@ -1,14 +1,16 @@
 import argparse
-from cgi import print_environ
 import csv
 import itertools
 import os
 import math
+import random
 import matplotlib.pyplot as plt
 import multiprocessing
 import numpy as np
+import networkx as nx
 from scipy.stats import truncnorm
 from scipy.stats import pearsonr
+from sympy import is_convex
 
 from args import ArgsModel
 
@@ -39,9 +41,9 @@ class Agent(object):
         self.not_in_net = None
 
         # following chi-square
-        self.R = None
-        self.I = None
-        self.P = None
+        self.R = None # R_i (ego i's own resources)
+        self.I = None # I_ti (ego i's level of interest in collective goods at t iteration)
+        self.P = None # P_i (ego i's power/centrality)
 
         # sum param
         self.sum_R = None
@@ -49,10 +51,10 @@ class Agent(object):
 
         # the degree of influence ego i exert over j
         # a list of len(agents)
-        self.P_ij = None
+        self.P_ij = None 
 
         # initalized as all defectors
-        self.is_volunteer = 0
+        self.is_volunteer = 0 # V_ti (ego i's decision to participate at t iteration)
 
         # N and density
         self.net_n = args.N
@@ -74,61 +76,48 @@ class Agent(object):
         self.I = min(100.0, self.I)
         self.I_delta = 0
     
-    def add_net_member(self, ag):
-        if self.net is None:
-            self.net = list()
-        self.net.append(ag)
-    
-    def add_not_in_net_member(self, ag):
-        if self.not_in_net is None:
-            self.not_in_net = list()
-        self.not_in_net.append(ag)
-    
+    def add_net_member(self, neighbors, neighbors_p_sum):
+        self.net = neighbors 
+        self.neighbors_p_sum = neighbors_p_sum
+
     @staticmethod
     def _draw(p):
-        return 1 if np.random.uniform() < p else 0
+        return True if np.random.uniform() < p else False
     
-    def _get_p_ij(self, p_i: float, p_j:float) -> float:
-        return math.sqrt(p_i/(p_i+p_j+EPSILON) * p_i/(self.sum_P-p_i))
+    def _get_p_ij(self, ag_j) -> float:
+        p_i = self.P
+        p_j = ag_j.P
+        p_k_sum = ag_j.neighbors_p_sum - p_i
+        return math.sqrt(p_i/(p_i+p_j+EPSILON) * p_i/(p_k_sum+EPSILON)) # formula (6)
     
     def _get_net_pi(self):
         if self.net is not None:
-            pi_is_not_volun = sum([ag.R*ag.is_volunteer for ag in self.net]) / self.sum_R
+            pi_is_not_volun = sum([ag.R*ag.is_volunteer for ag in self.net]) / self.sum_R # formula (5)
         else:
             pi_is_not_volun = 0.0
-        
-        # if self.not_in_net is not None:
-        #     pi_is_volun = pi_is_not_volun + (self.R + sum([self._get_p_ij(self.P, ag.P)*ag.R*(1-ag.is_volunteer) for ag in self.not_in_net])) / self.sum_R
-        # else:
-        #     pi_is_volun = pi_is_not_volun + (self.R) / self.sum_R
-        
+
         if self.net is not None:
-            pi_is_volun = (pi_is_not_volun + self.R + sum([self._get_p_ij(self.P, ag.P)*ag.R*(1-ag.is_volunteer) for ag in self.net])) / self.sum_R
+            pi_is_volun = (pi_is_not_volun + self.R + sum([self._get_p_ij(ag)*ag.R for ag in self.net if not ag.is_volunteer])) / self.sum_R # formula (7)
         else:
             pi_is_volun = (pi_is_not_volun + self.R) / self.sum_R
-
-        # if self.net is not None:
-        #     pi_is_volun = pi_is_not_volun + (self.R + sum([self._get_p_ij(self.P, ag.P)*ag.R*(1-ag.is_volunteer) for ag in self.net])) / self.sum_R
-        # else:
-        #     pi_is_volun = pi_is_not_volun + (self.R) / self.sum_R
 
         return (pi_is_not_volun, pi_is_volun)
     
     @staticmethod
     def _get_production_level(pi):
-        return 1 / (1 + math.exp(10*(0.5-pi)))
+        return 1 / (1 + math.exp(10*(.5-pi))) # formula (1)
 
-    def to_volunteer(self) -> None:
-        # eq. 8
+    def to_volunteer(self) -> None: 
+        # formula (8)
         pi_is_not_vol, pi_is_vol = self._get_net_pi()
         expect_is_not_vol = self._get_production_level(pi_is_not_vol)*self.sum_R*self.I
-        expect_is_vol = self._get_production_level(pi_is_vol)*self.sum_R*self.I - self.R
+        expect_is_vol = self._get_production_level(pi_is_vol)*self.sum_R*self.I - self.R 
         expect_marginal = (expect_is_vol - expect_is_not_vol) / self.R
         # print(pi_is_vol, expect_is_vol)
         # print(pi_is_not_vol, expect_is_not_vol)
         p = 0
         try:
-            p = 1 / (1 + math.exp(10*(1.0-expect_marginal)))
+            p = 1 / (1 + math.exp(10*(1.0-expect_marginal))) # formula (8)
         except:
             if 1.0-expect_marginal > 0:
                 p = 0.0
@@ -137,40 +126,37 @@ class Agent(object):
         # print(p)
         # print("===============")
         self.is_volunteer = self._draw(p)
+        # if not self.is_volunteer:
+        #     print(pi_is_vol, expect_is_vol)
+        #     print(pi_is_not_vol, expect_is_not_vol)
+        #     print(p)
+        #     print("===============")
     
     def to_influence(self) -> None:
         if self.net is None:
             return
-        
-        if self.is_volunteer:
-            others_list = [ag_j for ag_j in self.net if (not ag_j.is_volunteer and self.I > ag_j.I) or ag_j.is_volunteer]
-            others_list = sorted(others_list, key=lambda ag_j: ag_j.R*(self.P/(ag_j.P+EPSILON)), reverse=True)
+         
+        if self.is_volunteer: # choose to participate 
+            # upward influence "form j"
+            others_list = [ag for ag in self.net if not ag.is_volunteer and self.I > ag.I] 
+            others_list = sorted(others_list, key=lambda ag: ag.R*self._get_p_ij(ag), reverse=True)
             resourse_left = self.R
-            for ag_j in others_list:
-                if not ag_j.is_volunteer:
-                    # eq.10; participate influence not participate
-                    ag_j.I += (self.I-ag_j.I) * self._get_p_ij(self.P, ag_j.P)
-                else:
-                    # eq.12; participate influence participate
-                    ag_j.I += (math.sqrt(self.I**2 + ag_j.I**2) - ag_j.I) * self._get_p_ij(self.P, ag_j.P)
-                resourse_left -= 1 / (self.net_n*self.net_density) * max(1.0, ag_j.P/(self.P+EPSILON))
+            for ag in others_list:
+                ag.I_delta += (self.I - ag.I)*self._get_p_ij(ag) # formula (10)
+                resourse_left -= (1 / (self.net_n*self.net_density)) * (self.P/(ag.P+EPSILON))
                 if resourse_left <= 0:
                     break
-        else:
-            others_list = [ag_j for ag_j in self.net if ag_j.is_volunteer and self.I < ag_j.I]
-            others_list = sorted(others_list, key=lambda ag_j: ag_j.R*(self.P/(ag_j.P+EPSILON)), reverse=True)
-            resourse_left = self.R
-            for ag_j in others_list:
-                if ag_j.is_volunteer:
-                    # eq.11; not participate influence participate
-                    ag_j.I += (self.I-ag_j.I) * self._get_p_ij(self.P, ag_j.P)
-                resourse_left -= 1 / (self.net_n*self.net_density) * max(1, ag_j.P/(self.P+EPSILON))
-                if resourse_left <= 0:
-                    break
-
+            # mutual reinforcement "from j"
+            for ag in self.net:
+                if ag.is_volunteer:
+                    ag.I_delta += (math.sqrt(self.I**2 + ag.I**2) - ag.I) * self._get_p_ij(ag) # formula (12)
+        else: # chooses to defect 
+            # downward influence "from j"
+            for ag in self.net:
+                if ag.is_volunteer and self.I < ag.I:
+                    ag.I_delta += (self.I - ag.I)*self._get_p_ij(ag)
 
 class PublicGoodsGame(object):
-
     def __init__(self, args: argparse.ArgumentParser, verbose=True) -> None:
         super().__init__()
 
@@ -181,7 +167,7 @@ class PublicGoodsGame(object):
         if self.verbose:
             print("Args: {}".format(args))
 
-        self.ags, self.relation_matrix = self.init_ags()
+        self.ags = self.init_ags()
         
         # record
         self.avg_I_list = list()
@@ -220,39 +206,40 @@ class PublicGoodsGame(object):
                 s[chosen_ag] = 1.0
                 ctr += 1
         return ans
-    
+
+    def bulid_network(self, N, density, k = 20, across_ratio=.3):
+        edge_n = int(density * N * (N-1) / 2) # undirected 
+        within_edge_n = int(edge_n * across_ratio)
+        between_edge_n = edge_n - within_edge_n
+        
+        within_group, between_group = [], []
+        for i in range(N):
+            for j in range(N):
+                if j > i:
+                    i_group_index, j_group_index = int(i/k), int(j/k)
+                    if i_group_index == j_group_index:
+                        within_group.append((i, j))
+                    else:
+                        between_group.append((i, j))
+        
+        edges = random.sample(within_group, k=within_edge_n) + random.sample(between_group, k=between_edge_n)
+        G = nx.Graph()
+        G.add_nodes_from(range(0, N))
+        G.add_edges_from(edges)
+        return G
 
     def init_ags(self) -> list:
         # built network 
-        relation_matrix = np.zeros((self.args.N, self.args.N))
-        edges_n = self.args.N*(self.args.N-1) * self.args.net_density
-        edges_ag = list(np.round(get_chi_square(size=self.args.N, df=self.args.net_df, mean=edges_n/self.args.N), 0).astype(np.int32))
-
-        ## group into 5 groups, 30% of the ties are sent across groups
-        for g_idx in range(5):
-            ag_idx_low, ag_idx_high = int(self.args.N*g_idx/5), int(self.args.N*(g_idx+1)/5)
-            for ag_i in range(ag_idx_low, ag_idx_high): # group members: index from [low, high)
-                j = list()
-                e_n = edges_ag[ag_i]
-                # across groups
-                for ag_j in self.get_exclude_randint(self.args.N, ag_idx_low, ag_idx_high, ag_i, size=round(e_n*0.3)):
-                    relation_matrix[ag_i][ag_j] = 1.0
-                    j.append(ag_j)
-                # within groups
-                for ag_j in self.get_randint(ag_idx_low, ag_idx_high, ag_i, size=e_n-round(e_n*0.3)):
-                    relation_matrix[ag_i][ag_j] = 1.0
-                    j.append(ag_j)
+        self.G = self.bulid_network(self.args.N, self.args.net_density)
         
         # P
-        ## calculate the eigenvalues
-        ## and choose the eigenvectors of the largest eigenvalue for P = [P_1, P_2, ..., P_N]
-
-        # method 1
+        ## calculate the eigenvalues and choose the eigenvectors of the largest eigenvalue for P = [P_1, P_2, ..., P_N]
+        ### method 1
+        P = list(nx.eigenvector_centrality(self.G).values())
         # w, v = np.linalg.eig(relation_matrix)
         # P = np.abs(v[:, np.argmax(w)])
-
-        # method 2
-        P = get_chi_square(size=self.args.N, df=self.args.P_df, mean=1)
+        ### method 2
+        # P = get_chi_square(size=self.args.N, df=self.args.P_df, mean=1)
 
         CORR_STANDARD_ALPHA = 0.01
 
@@ -286,18 +273,16 @@ class PublicGoodsGame(object):
             ag.set_param_sum_PR(np.sum(P), np.sum(R))
             ags.append(ag)
         
-        # build network
-        for ag_i in range(self.args.N):
-            for ag_j in range(self.args.N):
-                if relation_matrix[ag_i][ag_j] == 1.0:
-                    ags[ag_i].add_net_member(ags[ag_j])
-                elif ag_i != ag_j:
-                    ags[ag_i].add_not_in_net_member(ags[ag_j])
+        # add neighbors to agents
+        for i in range(self.args.N):
+            neighbors = [ags[n] for n in list(self.G.neighbors(i))]
+            neighbors_p_sum = sum([ag_j.P for ag_j in neighbors])
+            ags[i].add_net_member(neighbors, neighbors_p_sum)
         
         if self.verbose:
             self.check_distribution(ags, self.args)
         
-        return ags, relation_matrix
+        return ags
 
 
     @staticmethod
@@ -363,8 +348,6 @@ class PublicGoodsGame(object):
                 print("| iter {} | avg_I = {:.4f}; global contribution = {:.4f}".format(("  "+str(iter))[-3:], self.avg_I_list[-1], self.total_contribution_list[-1]))
 
     
-    
-
 
 class PlotLinesHandler(object):
     _ids = itertools.count(0)
@@ -385,7 +368,7 @@ class PlotLinesHandler(object):
         plt.ylabel(ylabel_show)
 
         ax = plt.gca()
-        ax.set_ylim([0., 100.])
+        ax.set_ylim([-1, 101])
 
     def plot_line(self, data, legend,
         linewidth=1, color="", alpha=1.0):
@@ -421,10 +404,10 @@ if __name__ == "__main__":
     ## multiple trails on one condition
     custom_legend = "Test"
     args_dict = parser.get_args()
-    avg_I_hd = PlotLinesHandler(xlabel="Iteration", ylabel="contrib",
-                                ylabel_show="Total Contribution")
-    contrib_hd = PlotLinesHandler(xlabel="Iteration", ylabel="avgI",
+    avg_I_hd = PlotLinesHandler(xlabel="Iteration", ylabel="avgI",
                                   ylabel_show="Average level of Interest")
+    contrib_hd = PlotLinesHandler(xlabel="Iteration", ylabel="contrib",
+                                ylabel_show="Total Contribution")
     for exp_legend, exp_args in args_dict.items():
         np.random.seed(seed=exp_args.seed)
         game = PublicGoodsGame(exp_args)

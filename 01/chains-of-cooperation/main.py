@@ -196,11 +196,11 @@ class PublicGoodsGame(object):
     
     def get_ag_pi(self, ag:Agent):
         if self.args.net_group == "parallel":
-            return 0.5
+            return 0
         elif self.args.net_group == "serial":
             ######### Q2 #########
-            # return self._get_global_pi() # default: synchronous
-            return self.global_pi # asynchronous
+            return self._get_global_pi() # default: synchronous
+            # return self.global_pi # asynchronous
             ######################
         elif self.args.net_group in {"strong", "weak"}:
             return ag.get_net_pi()
@@ -304,7 +304,7 @@ def save_plot(file_name, fig, ax, n_iter):
     by_label = dict(zip(labels, handles))
     plt.legend(by_label.values(), by_label.keys())
 
-    # fig.set_facecolor('white')
+    fig.set_facecolor('white')
     plt.savefig(output_dir+'/'+file_name+'.png') 
 
 def plot_result(record_data, file_name, alpha=.1):
@@ -334,7 +334,7 @@ if __name__ == "__main__":
     np.random.seed(RAMOM_SEED)
     parser = ArgsModel()
 
-    exp = "Q2_"
+    exp = "Default_"
 
     ############## Multiple trails ##############
     ## Figure 1

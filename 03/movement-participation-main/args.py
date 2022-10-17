@@ -38,7 +38,7 @@ class ArgsModel(object):
     
     @staticmethod
     def add_distribution_param(parser: argparse.ArgumentParser):
-        parser.add_argument("--R_df", type=int, default=3,
+        parser.add_argument("--R_df", type=int, default=20,
             help="the degree of freedom of R's chi-square distribution. 3, 7, or 20.")
         parser.add_argument("--I_df", type=int, default=3,
             help="the degree of freedom of I's chi-square distribution. 3, 7, or 20.")
@@ -62,7 +62,7 @@ class ArgsModel(object):
             help="the degree of freedom of the chi-square distribution for # of edges. 3, 7, or 20.")
         parser.add_argument("--figNo", type=int, default=1,
             help="the figure to replicate. 0 for custom parameters.")
-        parser.add_argument("--seed", type=int, default=777,
+        parser.add_argument("--seed", type=int, default=123,
             help="random seed.")
         return parser
 
@@ -72,7 +72,7 @@ class ArgsModel(object):
         args.figNo = figNo
         if figNo == 1:
             args.N = 100
-            args.n_iter = 1000
+            args.n_iter = 160
             args.net_density = 0.1
             args.net_df = 20 # not assigned in the paper
 
@@ -82,25 +82,25 @@ class ArgsModel(object):
 
             # Four Regimes
             rtn_dict = dict()
-            args_privileged = copy.deepcopy(args)
-            args_privileged.r_RP = 1
-            args_privileged.r_IP = 1
-            rtn_dict["Privileged"] = args_privileged
+            # args_privileged = copy.deepcopy(args)
+            # args_privileged.r_RP = 1
+            # args_privileged.r_IP = 1
+            # rtn_dict["Privileged"] = args_privileged
 
             args_rebellious = copy.deepcopy(args)
             args_rebellious.r_RP = -1
             args_rebellious.r_IP = 1
             rtn_dict["Rebellious"] = args_rebellious
 
-            args_impoverished = copy.deepcopy(args)
-            args_impoverished.r_RP = 1
-            args_impoverished.r_IP = -1
-            rtn_dict["Impoverished"] = args_impoverished
+            # args_impoverished = copy.deepcopy(args)
+            # args_impoverished.r_RP = 1
+            # args_impoverished.r_IP = -1
+            # rtn_dict["Impoverished"] = args_impoverished
             
-            args_estranged  = copy.deepcopy(args)
-            args_estranged.r_RP = -1
-            args_estranged.r_IP = -1
-            rtn_dict["Estranged"] = args_estranged
+            # args_estranged  = copy.deepcopy(args)
+            # args_estranged.r_RP = -1
+            # args_estranged.r_IP = -1
+            # rtn_dict["Estranged"] = args_estranged
 
             return rtn_dict
     
