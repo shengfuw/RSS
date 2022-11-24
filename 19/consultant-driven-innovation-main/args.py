@@ -27,7 +27,7 @@ class ArgsConfig:
         # consultant
         parser.add_argument("--n_consultant", type=int, default=100,
             help="the # of consultants.")
-        parser.add_argument("--eta", type=float, default=1000.0,
+        parser.add_argument("--eta", type=float, default=1.0,
             help="a constant that tunes the level of consulting returns.")
         parser.add_argument("--gamma_c", type=float, default=0.5,
             help="the weight of historical past on aspirations.")
@@ -49,9 +49,9 @@ class ArgsConfig:
             help="the # of innovations, numbered from {0, 1, 2, ..., n_innovation-1}.")
         parser.add_argument("--n_periods", type=int, default=300,
             help="the # of periods.")
-        parser.add_argument("--n_trails", type=int, default=100,
+        parser.add_argument("--n_trails", type=int, default=10,
             help="the # of trials for each config.")
-        parser.add_argument("--rnd_seed", type=int, default=1025,
+        parser.add_argument("--rnd_seed", type=int, default=123,
             help="random seed.")
 
         self.parser = parser

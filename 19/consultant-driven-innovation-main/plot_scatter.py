@@ -14,10 +14,11 @@ def plot_scatter_pop(alpha_df, beta_df, rnd_seed, n_trail, fig_size=9):
     ax = plt.gca()
     ax.set_xlim([0, 100])
     plt.xticks(np.arange(0, 101, step=20))
-    # ax.set_ylim([35, 85])
-    ax.set_ylim([30, 85])
-    # plt.yticks(np.arange(35, 86, step=5))
-    plt.yticks(np.arange(30, 86, step=5))
+    ax.set_ylim([35, 85])
+    plt.yticks(np.arange(35, 86, step=5))
+    # ax.set_ylim([30, 85])
+    # plt.yticks(np.arange(30, 86, step=5))
+    
     
     # scatter with error bar
     point_x = np.arange(0, 101, 10)
@@ -47,10 +48,10 @@ def plot_scatter_turn(alpha_df, beta_df, rnd_seed, n_trail, fig_size=9):
     ax = plt.gca()
     ax.set_xlim([0, 100])
     plt.xticks(np.arange(0, 101, step=20))
-    # ax.set_ylim([0, 140])
-    ax.set_ylim([0, 185])
-    # plt.yticks(np.arange(0, 141, step=20))
-    plt.yticks(np.arange(0, 181, step=20))
+    ax.set_ylim([0, 140])
+    plt.yticks(np.arange(0, 141, step=20))
+    # ax.set_ylim([0, 185])
+    # plt.yticks(np.arange(0, 181, step=20))
     
     # scatter with error bar
     point_x = np.arange(0, 101, 10)

@@ -34,7 +34,7 @@ class PlotLinesHandler:
             # ax.xaxis.set_major_formatter('{x:0.0f}')
         if y_lim is not None:
             ax.set_ylim([0, y_lim])
-            plt.yticks(np.arange(0, y_lim-5+1, step=10))
+            plt.yticks(np.arange(0, y_lim+1, step=10))
             # ax.yaxis.set_major_locator(LinearLocator(int(y_lim/10)+1))
             # ax.yaxis.set_major_formatter('{x:0.0f}')
 

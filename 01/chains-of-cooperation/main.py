@@ -196,7 +196,10 @@ class PublicGoodsGame(object):
     
     def get_ag_pi(self, ag:Agent):
         if self.args.net_group == "parallel":
+            ################# Q7 #################
+            # return 0.5 # default
             return 0
+            ######################################
         elif self.args.net_group == "serial":
             ######### Q2 #########
             return self._get_global_pi() # default: synchronous
@@ -213,8 +216,19 @@ class PublicGoodsGame(object):
         4. update T_ij for every agent j
         """
         # 1.
+        ############### Q5 ############### 
+        ## default ##
         for ag in self.ags:
             ag.to_volunteer(pi=self.get_ag_pi(ag))
+        #############
+        ## loop until equilibrium ##
+        last_pi = -1
+        while last_pi != self._get_global_pi():
+            last_pi = self._get_global_pi()
+            for ag in self.ags:
+                ag.to_volunteer(pi=self.get_ag_pi(ag))
+        #############
+        ###################################
         
         # 2.
         self.global_pi = self._get_global_pi()
@@ -264,6 +278,7 @@ class PublicGoodsGame(object):
     def simulate(self, log_v=50):
         if self.verbose:
             print("| iter   0 | pi = {:.4f}; R = {:.4f}; L = {:.4f}".format(self.global_pi, self.global_R_ratio, self.L))
+
         for iter in range(1, self.args.n_iter+1):
             self.simulate_iter()
             ##############  Q1-1 ##############
@@ -272,7 +287,7 @@ class PublicGoodsGame(object):
             ###################################
             if self.verbose and iter % log_v == 0:
                 print("| iter {} | pi = {:.4f}; R = {:.4f}; L = {:.4f}".format(("  "+str(iter))[-3:], self.global_pi, self.global_R_ratio, self.L))
-    
+
     def get_pi_list(self):
         return np.array(self.R_ratio_list)
 
@@ -334,7 +349,8 @@ if __name__ == "__main__":
     np.random.seed(RAMOM_SEED)
     parser = ArgsModel()
 
-    exp = "Default_"
+    exp = "Q5+7_"
+    print(exp, "start!")
 
     ############## Multiple trails ##############
     ## Figure 1
@@ -406,22 +422,3 @@ if __name__ == "__main__":
     #     plot_line_hd.plot_line(game.get_pi_list(), exp_legend)
     #     param = "N_{}_T_{}".format(exp_args.N, exp_args.thres_type)
     # plot_line_hd.save_fig(param)
-
-    # Some notes:
-    # 最後的指標到底是 人數比率 還是 contribution 的比率？
-    # formula 3 裡的 pi 是 "rate of contribution." 到底是「參加的比例」還是「所有資源中被貢獻出來的比率」
-    # participation rate 是當下還是現在？ （Try this!）
-    # E 的分佈：normal, [0, 1]
-    # 對於 R 的理解？ 我現在理解應該是「加總等於 1 的 normal distribution」? N 是 total resource 還是 人數？
-    # Smax ???
-    # 均衡狀態的條件 ???
-   
-    # (x)
-    # 確認 strong, weak network type
-    # 確認 RI correlation 的設定
-
-    # (V)
-    # 確認各 Fig 的 threshold 初始化 -> Fig1, 2, 5 一開始都是1
-    # 把資料儲存起來，再畫成圖
-    # C=[0,1] 的地方都寫錯，應該是 V=[0,1]。這是因為受到舊版的影響?
-    # rnd seed = 123

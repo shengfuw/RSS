@@ -82,25 +82,25 @@ class ArgsModel(object):
 
             # Four Regimes
             rtn_dict = dict()
-            # args_privileged = copy.deepcopy(args)
-            # args_privileged.r_RP = 1
-            # args_privileged.r_IP = 1
-            # rtn_dict["Privileged"] = args_privileged
+            args_privileged = copy.deepcopy(args)
+            args_privileged.r_RP = 1
+            args_privileged.r_IP = 1
+            rtn_dict["Privileged"] = args_privileged
 
             args_rebellious = copy.deepcopy(args)
             args_rebellious.r_RP = -1
             args_rebellious.r_IP = 1
             rtn_dict["Rebellious"] = args_rebellious
 
-            # args_impoverished = copy.deepcopy(args)
-            # args_impoverished.r_RP = 1
-            # args_impoverished.r_IP = -1
-            # rtn_dict["Impoverished"] = args_impoverished
+            args_impoverished = copy.deepcopy(args)
+            args_impoverished.r_RP = 1
+            args_impoverished.r_IP = -1
+            rtn_dict["Impoverished"] = args_impoverished
             
-            # args_estranged  = copy.deepcopy(args)
-            # args_estranged.r_RP = -1
-            # args_estranged.r_IP = -1
-            # rtn_dict["Estranged"] = args_estranged
+            args_estranged  = copy.deepcopy(args)
+            args_estranged.r_RP = -1
+            args_estranged.r_IP = -1
+            rtn_dict["Estranged"] = args_estranged
 
             return rtn_dict
     

@@ -2,15 +2,15 @@ import argparse
 import csv
 import itertools
 import multiprocessing
-from random import random
-import numpy as np
 import os
+import random
+import numpy as np
 import pandas as pd
-
 from args import ArgsConfig
 from plot import PlotLinesHandler
 from plot_scatter import plot_scatter_pop, plot_scatter_turn
- 
+
+
 def truncated_normal() -> float:
     rnt = np.random.normal(loc=0.5, scale=1)
     while rnt > 1.0 or rnt < 0.0:
@@ -28,7 +28,8 @@ class Consultant:
         
         self.inno = inno_init
         self.quality = truncated_normal()
-        # initial values???
+
+        # Q1: initial values?
         self.r_last = 0
         self.r_cur = 0
         self.a_h_last = 0
@@ -46,7 +47,7 @@ class Firm:
     def __init__(self, inno_init) -> None:
         self.id = next(self._ids)
 
-        # initial values???
+        # Q1: initial values?
         self.inno = inno_init
         self.o_last = 0
         self.o_cur = 0
@@ -60,7 +61,6 @@ class Firm:
 
 
 class Market:
-
     def __init__(self, args: argparse.ArgumentParser, verbose=True) -> None:
         np.random.seed(args.rnd_seed)
         self.args = args
@@ -100,10 +100,9 @@ class Market:
     def select_con_by_inno(self, inno_id) -> Consultant:
         prob = np.array(self.inno_to_con[inno_id]["prob_w"])
         prob = prob / np.sum(prob)
-        prob[np.argmax(prob)] += 1 - np.sum(prob) # adjust it to make its sum be exactly 1.0
-        selected_con_id = np.random.choice(np.arange(len(self.inno_to_con[inno_id]["con"])), p=prob)
+        prob[np.argmax(prob)] += 1 - np.sum(prob) # adjust it to make its sum be exactly 1.0        
+        selected_con_id = random.choices(np.arange(len(self.inno_to_con[inno_id]["con"])), weights=prob)[0]
         return self.inno_to_con[inno_id]["con"][selected_con_id]
-    
 
     def get_inno_pool(self) -> list:
         """ Return a list of all innovation that at least one consultant supplies. """
@@ -121,12 +120,12 @@ class Market:
                          (self.inno_to_firm_n[con.inno]/len(self.inno_to_con[con.inno]["con"]))
             con.r_cur = con_return
             
-            # Because average otucome is calculated from "previous clients"
+            # average otucome is calculated from "previous clients"
             if con.clients:
-                con.o_avg_list.append([firm.o_cur for firm in con.clients])
+                con.o_avg_list.append([firm.o_cur for firm in con.clients]) 
                 if len(con.o_avg_list) > self.args.window:
                     del con.o_avg_list[0]
-                assert len(con.o_avg_list) <= self.args.window
+                assert len(con.o_avg_list) <= self.args.window          
 
         # 5: the firm recieves an outcome
         for firm in self.firms:
@@ -135,26 +134,10 @@ class Market:
                            (1-self.args.alpha-self.args.beta) * truncated_normal()
             firm.o_cur = firm_outcome
 
-
-        # 4: the consultant recieves a return
-        # for con in self.cons:
-        #     con_return = self.args.eta * len(con.clients) * \
-        #                  (self.inno_to_firm_n[con.inno]/len(self.inno_to_con[con.inno]["con"]))
-        #     con.r_cur = con_return
-        #     if con.clients:
-        #         con.o_avg_list.append([firm.o_cur for firm in con.clients])
-        #         if len(con.o_avg_list) > self.args.window:
-        #             del con.o_avg_list[0]
-        #         assert len(con.o_avg_list) <= self.args.window
-
         # 6: consultants decide whether to make a change
         r_cur_arr = np.array([con.r_cur for con in self.cons])
-        ## just-completed round?
-        # best_con_idx = np.argmax(r_cur_arr)
-
-        r_last_arr = np.array([con.r_last for con in self.cons])  
+        r_last_arr = np.array([con.r_last for con in self.cons])  # just-completed round
         best_con_idx = np.argmax(r_last_arr)
-        ##
         best_con_inno = self.cons[best_con_idx].inno
         sum_r_cur = np.sum(r_cur_arr)
 
@@ -163,14 +146,7 @@ class Market:
             aspi_social = (sum_r_cur - con.r_cur) / (self.args.n_consultant - 1)
             aspi_total = self.args.gamma_c * aspi_history + (1-self.args.gamma_c) * aspi_social
             prob_change = 1 / (1 + np.exp(self.args.a_c + self.args.b_c*(con.r_cur - aspi_total)))
-              
-            # if prob_change > .9 and draw(.7):
-            #     prob_change = 0.0
-            #     print("!", end=" ")
-            # if prob_change < .1 and draw(.7):
-            #     prob_change = 0.9999
-                # print("*", end=" ")
-            # print("c", f"{prob_change:.3f}", f"{self.args.a_c + self.args.b_c*(con.r_cur - aspi_total):0.3f}", f"{con.r_cur:.3f}", f"{aspi_total:.3f}", f"{aspi_history:.3f}", f"{aspi_social :.3f}","|", len(con.clients), self.inno_to_firm_n[con.inno], len(self.inno_to_con[con.inno]["con"]), "|", con)
+            # print("{:.3f}, {:.3f}, {:.3f}, {:.3f}".format(prob_change, np.exp(self.args.a_c + self.args.b_c*(con.r_cur - aspi_total)), con.r_cur, aspi_total))
 
             # find the index of con in self.inno_to_con[con.inno]["con"]
             con_index = 0
@@ -191,7 +167,6 @@ class Market:
                 # add to new inno
                 self.inno_to_con[con.inno]["con"].append(con)
                 self.inno_to_con[con.inno]["prob_w"].append(0 + self.args.c)
-
                 con.o_avg_list = []
                 con_ori_clients = con.clients.copy()
                 con.clients = []
@@ -204,7 +179,6 @@ class Market:
                         self.inno_to_firm_n[firm.inno] += 1
                     firm.consultant = self.select_con_by_inno(inno_id=firm.inno)
                     firm.consultant.clients.append(firm)
-            
             else:
                 all_o = []
                 for l in con.o_avg_list:
@@ -218,14 +192,11 @@ class Market:
             con.r_cur = 0
 
         # 7: firms decide whether to make a change
-        ## just-completed round? 
-        # best_firm_sort = sorted(self.firms, key=lambda f: f.o_cur, reverse=True)
         best_firm_sort = sorted(self.firms, key=lambda f: f.o_last, reverse=True)
-        ##
         while len(self.inno_to_con[best_firm_sort[0].inno]["con"]) == 0:
             del best_firm_sort[0]
         best_firm_inno = best_firm_sort[0].inno
-        best_firm_con = best_firm_sort[0].consultant
+        best_firm_cons = best_firm_sort[0].consultant
         sum_o_cur = np.sum([firm.o_cur for firm in self.firms])
         inno_pool_con = self.get_inno_pool()
 
@@ -235,35 +206,21 @@ class Market:
             aspi_total = self.args.gamma_f * aspi_history + (1-self.args.gamma_f) * aspi_social
             prob_change = 1 / (1 + np.exp(self.args.a_f + self.args.b_f*(firm.o_cur - aspi_total)))
 
-
-            # print("f", f"{prob_change:.3f}", f"{self.args.a_f + self.args.b_f*(firm.o_cur - aspi_total):.3f}", f"{firm.o_cur:.3f}", f"{aspi_total:.3f}", "|", firm)
-            # prob_change = min(prob_change*5, 1)
-
             if draw(prob_change):
                 # consultant lose a client
                 for cli_idx, cli in enumerate(firm.consultant.clients):
                     if cli.id == firm.id:
                         firm.consultant.clients.pop(cli_idx)
                 self.inno_to_firm_n[firm.inno] -= 1
-
-                ## ! 如果已經是best innovation，隨機抽一個
-                # if draw(self.args.p_mimic_f):
-                if draw(self.args.p_mimic_f) and firm.inno != best_firm_inno:
-                ##
+                
+                if draw(self.args.p_mimic_f) and firm.inno != best_firm_inno: # Q3: Firms abandoning current best practice are obliged to draw randomly from the pool
                     firm.inno = best_firm_inno
-                    ##
-                    # firm.consultant = best_firm_con
-                    ##
+                    # firm.consultant = best_firm_con # Q2: 是否重選一個consultant
                 else:
-                    ## ！ 不能選到原本的 innovation
-                    # firm.inno = np.random.choice(inno_pool_con)
-                    firm.inno = np.random.choice(inno_pool_con[inno_pool_con != firm.inno])
-                    ##
-                    # firm select a new consultant supplying firm.inno
-                    # firm.consultant = self.select_con_by_inno(inno_id=firm.inno)
-                # Why firm.consultant = best_firm_con?
+                    firm.inno = np.random.choice(inno_pool_con[inno_pool_con != firm.inno]) # Q3: Firms cannot immediately readopt an abandoned innovation
+
+                # firm select a new consultant supplying firm.inno
                 firm.consultant = self.select_con_by_inno(inno_id=firm.inno)
-                ##
                 firm.consultant.clients.append(firm)
                 self.inno_to_firm_n[firm.inno] += 1
             
@@ -292,19 +249,13 @@ class Market:
 
             firm_len = np.array(self.inno_to_firm_n)
             assert np.sum(firm_len) == self.args.n_innovation
-            ##
-            # self.firm_adp_rate.append(np.max(firm_len)/self.args.n_innovation)
             self.firm_adp_rate.append(np.max(firm_len)/self.args.n_firm)
-            ##
             self.firm_most_inno.append(np.argmax(firm_len))
             self.turnover += 1 if len(self.firm_most_inno) == 1 or self.firm_most_inno[-1] != self.firm_most_inno[-2] else 0
 
             con_len = np.array([len(d["con"]) for d in self.inno_to_con])
             assert np.sum(con_len) == self.args.n_innovation
-            ##
-            # self.con_adp_rate.append(np.max(con_len)/self.args.n_innovation)
             self.con_adp_rate.append(np.max(con_len)/self.args.n_consultant)
-            ##
             self.con_most_inno.append(np.argmax(con_len))
 
             if self.verbose:
@@ -329,19 +280,18 @@ def simulate_trails(args, alpha, beta, rnd_seed, log_data, fix_alpha):
     
 
 
-
 if __name__ == "__main__":
     args_config = ArgsConfig()
     args = args_config.get_args()
 
-    # figure 2 single trial
+    # Figure 2: single trial
     m = Market(args)
     m.simulate()
 
-    plh_firm = PlotLinesHandler(xlabel="Iterations", ylabel="Adoption", ylabel_show="% Adoption",
-                                x_lim=args.n_periods+15, y_lim=101)
-    plh_con = PlotLinesHandler(xlabel="Iterations", ylabel="Adoption", ylabel_show="% Adoption",
-                               x_lim=args.n_periods+15, y_lim=101)
+    plh_firm = PlotLinesHandler(xlabel="Iterations", ylabel="Adopting", ylabel_show="% Adopting",
+                                x_lim=args.n_periods+15, y_lim=85)
+    plh_con = PlotLinesHandler(xlabel="Iterations", ylabel="Adopting", ylabel_show="% Adopting",
+                               x_lim=args.n_periods+15, y_lim=85)
     
     plh_firm.plot_line(np.array(m.firm_adp_rate), color="black")
     plh_firm.plot_changes(m.firm_most_inno, m.firm_adp_rate, color="black")
@@ -351,7 +301,7 @@ if __name__ == "__main__":
     plh_con.plot_changes(m.con_most_inno, m.con_adp_rate, color="black")
     plh_con.save_fig(title_param="rndSeed_{}_con".format(args.rnd_seed))
 
-    # figure 3, 4
+    # Figure 3, 4
     RANDOM_SEED = args.rnd_seed
     manager = multiprocessing.Manager()
     log_data = manager.list()
@@ -386,9 +336,3 @@ if __name__ == "__main__":
                         ignore_index=True, inplace=True)
     plot_scatter_pop(alpha_df, beta_df, RANDOM_SEED, args.n_trails)
     plot_scatter_turn(alpha_df,beta_df, RANDOM_SEED, args.n_trails)
-    
-    
-        
-        
-        
-

@@ -10,7 +10,6 @@ import numpy as np
 import networkx as nx
 from scipy.stats import truncnorm
 from scipy.stats import pearsonr
-from sympy import is_convex
 
 from args import ArgsModel
 
@@ -113,8 +112,6 @@ class Agent(object):
         expect_is_not_vol = self._get_production_level(pi_is_not_vol)*self.sum_R*self.I
         expect_is_vol = self._get_production_level(pi_is_vol)*self.sum_R*self.I - self.R 
         expect_marginal = (expect_is_vol - expect_is_not_vol) / self.R
-        # print(pi_is_vol, expect_is_vol)
-        # print(pi_is_not_vol, expect_is_not_vol)
         p = 0
         try:
             p = 1 / (1 + math.exp(10*(1.0-expect_marginal))) # formula (8)
@@ -123,14 +120,7 @@ class Agent(object):
                 p = 0.0
             else:
                 p = 1.0
-        # print(p)
-        # print("===============")
         self.is_volunteer = self._draw(p)
-        # if not self.is_volunteer:
-        #     print(pi_is_vol, expect_is_vol)
-        #     print(pi_is_not_vol, expect_is_not_vol)
-        #     print(p)
-        #     print("===============")
     
     def to_influence(self) -> None:
         if self.net is None:
@@ -235,35 +225,35 @@ class PublicGoodsGame(object):
         # P
         ## calculate the eigenvalues and choose the eigenvectors of the largest eigenvalue for P = [P_1, P_2, ..., P_N]
         ### method 1
-        P = list(nx.eigenvector_centrality(self.G).values())
+        ### 1-1
+        # P = np.array(list(nx.eigenvector_centrality(self.G).values()))
+        ### 1-2
         # w, v = np.linalg.eig(relation_matrix)
         # P = np.abs(v[:, np.argmax(w)])
         ### method 2
-        # P = get_chi_square(size=self.args.N, df=self.args.P_df, mean=1)
+        P = get_chi_square(size=self.args.N, df=self.args.P_df, mean=1)
 
         CORR_STANDARD_ALPHA = 0.01
 
-        # R
+        # Resource
         R = None
         while True:
             R = get_chi_square(size=self.args.N, df=self.args.R_df, mean=1)
             r, p_value = pearsonr(P, R)
-            if self.args.r_RP * r > 0 and p_value < CORR_STANDARD_ALPHA:
+            # if self.args.r_RP * r > 0 and p_value < CORR_STANDARD_ALPHA:
+            if self.args.r_RP * r > 0 and p_value < CORR_STANDARD_ALPHA and abs(r) > .45: 
                 print("Success | r_RP = {:5f}; p-value={:3f}".format(r, p_value))
                 break
-            # else:
-            #     print("Fail    | r_RP = {:5f}; p-value={:3f}".format(r, p_value))
         
-        # I
+        # Interest
         I = None
         while True:
             I = get_chi_square(size=self.args.N, df=self.args.I_df, mean=1)
             r, p_value = pearsonr(P, I)
-            if self.args.r_IP * r > 0 and p_value < CORR_STANDARD_ALPHA:
+            # if self.args.r_IP * r > 0 and p_value < CORR_STANDARD_ALPHA:
+            if self.args.r_IP * r > 0 and p_value < CORR_STANDARD_ALPHA and abs(r) > .45:
                 print("Success | r_IP = {:5f}; p-value={:3f}".format(r, p_value))
                 break
-            # else:
-            #     print("Fail    | r_IP = {:5f}; p-value={:3f}".format(r, p_value))
                 
         # build agents
         ags = list()
