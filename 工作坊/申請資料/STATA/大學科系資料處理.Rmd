@@ -1,0 +1,650 @@
+---
+title: "大學科系資料處理"
+author: "Sheng Fu"
+date: "5/10/2021"
+output: html_document
+---
+# load packages
+```{r}
+library(tidyverse)
+library(httr)
+library(readr)
+library(readxl)
+library(haven)
+library(rvest)
+library(survival)
+library(survminer)
+```
+
+# _sdata.xls: 大專校院科系別概況(含學生數,畢業生數,教師數)
+
+## 109~93 sdata
+```{r}
+url <- "https://stats.moe.gov.tw/files/detail/109/109_sdata.xls"
+tf <- tempfile(fileext = ".xls")
+GET(url, write_disk(path = tf))
+df <- as.data.frame(read_excel(tf))
+colnames(df) <- df[2, ] 
+df <- df[c(-1, -2), ]
+df$year <- 109  
+df$sy <- 109 + 1911
+df$ey <- 109 + 1912
+
+for(y in c(108:93)) {
+    url <- paste("https://stats.moe.gov.tw/files/detail/", y, "/", y, "_sdata.xls"
+                 , sep = "")
+    tf <- tempfile(fileext = ".xls")
+    GET(url, write_disk(path = tf))
+    df_temp <- as.data.frame(read_excel(tf))
+    colnames(df_temp) <- df_temp[2, ]
+    df_temp <- df_temp[c(-1, -2), ]
+    df_temp$year <- y
+    df_temp$sy <- y + 1911
+    df_temp$ey <- y + 1912
+    df <- df %>% bind_rows(df_temp)
+    rm(df_temp)
+}
+
+df <- df %>% rename("n1" = "...32", "n2" = "...33")
+write_dta(df, path = "sdata(93-109).dta")
+```
+
+
+# _students.xls: 學生數量
+
+## 87-109
+```{r}
+#97-109, 87 students
+#88-96 s21
+
+url <- "https://stats.moe.gov.tw/files/detail/109/109_students.xls"
+tf <- tempfile(fileext = ".xls")
+GET(url, write_disk(path = tf))
+df <- as.data.frame(read_excel(tf))
+colnames(df) <- df[2, ] 
+df <- df[c(-1, -2), ]
+df$year <- 109  
+df$sy <- 109 + 1911
+df$ey <- 109 + 1912
+
+for(y in c(108:87)){
+    print(y)
+    if(y %in% c(97:108)){
+        url <- paste0("https://stats.moe.gov.tw/files/detail/", y, "/", y, "_students.xls")
+    }
+    else if(y %in% c(88:96)){
+        url <- paste0("https://stats.moe.gov.tw/files/detail/", y, "/", y, "_s21.xls")
+    }
+    else if(y == 87){
+        url <- paste0("https://stats.moe.gov.tw/files/detail/", y, "/", y, "_students.xls")
+    }
+    
+    # browseURL(url)
+    #write_dta(df, path = paste0("data/", y, "_teachers.dta"))
+    tf <- tempfile(fileext = ".xls")
+    GET(url, write_disk(path = tf))
+    df_temp <- as.data.frame(read_excel(tf))
+    colnames(df_temp) <- df_temp[2, ]
+    df_temp <- df_temp[c(-1, -2), ]
+    df_temp$year <- y
+    df_temp$sy <- y + 1911
+    df_temp$ey <- y + 1912
+    df <- df %>% bind_rows(df_temp)
+    rm(df_temp)
+}
+
+df <- df %>% rename(way = `體系別
+WAY` )
+
+write_dta(df, path = "students(87-109)_raw.dta")
+```
+
+## 61-90
+```{r}
+df <- as.data.frame(read_excel("data/s90.xls"))
+colnames(df) <- df[2, ] 
+df <- df[c(-1, -2), ]
+
+dataset <- c("data/s89.xls", "data/s88.xls", "data/s85-87.xls", "data/s81-84.xls", "data/s76-80.xls", "data/s71-75.xls", "data/s66-70.xls", "data/s61-65.xls")
+for (data in dataset) {
+    df_temp <- as.data.frame(read_excel(data))
+    colnames(df_temp) <- df_temp[2, ]
+    df_temp <- df_temp[c(-1, -2), ]
+    df <- df %>% bind_rows(df_temp)
+    rm(df_temp)
+}
+colnames(df)[27:34] <- paste0("d", c(1:8))
+df[!is.na(df$d1), ]
+
+write_dta(df, path = "students(61-90)_raw.dta")
+```
+
+
+# _teachers.xls: 教師數量
+
+## 87-109
+```{r}
+#97-109, 87 teachers
+#93-96 ss11
+#88-92 s11
+
+ChangeColNames <- function(df){
+    colnames(df)[which(as.data.frame(unlist(
+    apply(df, 2, function(x) sum(which(grepl("政治大學", x)))))) != 0)] <- "sname"
+colnames(df)[which(as.data.frame(unlist(
+    apply(df, 2, function(x) sum(which(grepl("0003", x)))))) != 0)] <- "scode"
+colnames(df)[which(as.data.frame(unlist(
+    apply(df, 2, function(x) sum(which(grepl("日間|(^日$)", x)))))) != 0)] <- "dn"
+bname <- which(as.data.frame(unlist(apply(df, 2, 
+                                function(x) sum(which(grepl("學系", x)))))) != 0)
+    colnames(df)[bname] <- "bname"
+    colnames(df)[bname - 1] <- "bcode"
+tAll <- which(as.data.frame(unlist(apply(df, 2, 
+                                function(x) sum(which(grepl("^\\d{3}$", x)))))) > 10)[1]
+    colnames(df)[tAll] <- "t_all"
+    colnames(df)[tAll + 1] <- "t_all_male"
+    colnames(df)[tAll + 2] <- "t_all_female"
+    colnames(df)[tAll + 3] <- "t_professor_male"
+    colnames(df)[tAll + 4] <- "t_professor_female"
+    colnames(df)[tAll + 5] <- "t_associate_male"
+    colnames(df)[tAll + 6] <- "t_associate_female"
+    colnames(df)[tAll + 7] <- "t_assistant_male"
+    colnames(df)[tAll + 8] <- "t_assistant_female"
+    df <- df[, !(grepl("[...]", colnames(df)))]
+    df <- df %>% select("scode", "sname", "bcode", "bname", "dn", everything())
+    return(df)
+
+}
+
+url <- "https://stats.moe.gov.tw/files/detail/109/109_teachers.xls"
+tf <- tempfile(fileext = ".xls")
+GET(url, write_disk(path = tf))
+df <- as.data.frame(read_excel(tf))
+df <- ChangeColNames(df)
+df$year <- 109  
+df$sy <- 109 + 1911
+df$ey <- 109 + 1912
+
+for (y in c(108:87)) {
+    print(y)
+    if (y %in% c(97:108)) {
+        url <- paste0("https://stats.moe.gov.tw/files/detail/", y, "/", y, "_teachers.xls")
+    }
+    else if (y %in% c(93:96)) {
+        url <- paste0("https://stats.moe.gov.tw/files/detail/", y, "/", y, "_ss11.xls")
+    }
+    else if (y %in% c(88:92)) {
+        url <- paste0("https://stats.moe.gov.tw/files/detail/", y, "/", y, "_s11.xls")
+    }
+    else if (y == 87) {
+        url <- paste0("https://stats.moe.gov.tw/files/detail/", y, "/", y, "_teachers.xls")
+    }
+
+    tf <- tempfile(fileext = ".xls")
+    GET(url, write_disk(path = tf))
+    df_temp <- as.data.frame(read_excel(tf))
+    df_temp <- ChangeColNames(df_temp)
+    df_temp$year <- y
+    df_temp$sy <- y + 1911
+    df_temp$ey <- y + 1912
+    df <- df %>% bind_rows(df_temp)
+    rm(df_temp)
+}
+
+df <- df[, c(1:17)]
+write_dta(df, path = "teachers(87-109)_raw.dta")
+```
+
+## 72-87
+```{r}
+df <- as.data.frame(read_excel("data/t72-75.xls"))
+colnames(df) <- df[1, ] 
+df <- df[c(-1, -2), ]
+
+dataset <- c("data/t76-80.xls", "data/t81-84.xls", "data/t85-87.xls")
+for (data in dataset) {
+    df_temp <- as.data.frame(read_excel(data))
+    colnames(df_temp) <- df_temp[1, ]
+    df_temp <- df_temp[c(-1, -2), ]
+    df <- df %>% bind_rows(df_temp)
+    rm(df_temp)
+}
+
+df <- df[, c(1:15)]
+colnames(df) <- c("year", "scode", "sname", "dn", "bcode", "bname", "t_all", 
+                  "t_all_male", "t_all_female", "t_professor_male", 
+                  "t_professor_female", "t_associate_male", "t_associate_female", 
+                  "t_assistant_male", "t_assistant_female")
+write_dta(df, path = "teachers(72-87)_raw.dta")
+```
+
+
+# 抓取各年度的檔案總表
+```{r}
+url <- "https://depart.moe.edu.tw/ED4500/News.aspx?n=5A930C32CC6C3818&page=1&PageSize=30"
+links <- html_attr(html_nodes(read_html(url), "tr > td > a"), "href")
+
+ylinks = c()
+for(link in links){
+    link <- paste("https://depart.moe.edu.tw/ED4500/", link, sep = "")
+    ylink <- html_attr(html_nodes(read_html(link), "div > a"), "href")
+    ylink <- ylink[grepl(".(xls|csv)", ylink)]
+    ylinks <- c(ylinks, ylink) 
+}
+
+ylinks <- ylinks %>% as_data_frame() %>% 
+    mutate(value = str_extract(value, "\\d+_\\w+.(xls|csv)"))
+write.csv(ylinks, file = "ylinks.csv")
+```
+
+
+# 科系變動（代碼、名稱、學生人數、教師人數）處理
+
+## 單個學校的測試
+```{r}
+df <- as.data.frame(read_dta("/Users/shengfu/Desktop/臺大/高等量化方法 郭貞蘭/期末報告/college.dta"))
+
+similar_score <- function(x, y) { 
+    if (unlist(gregexpr("系", x)) != -1) {
+        a <- unlist(str_split(x, ""))[c(1:tail(unlist(gregexpr("系", x)), n = 1) - 1)]
+    }
+    else {
+        a <- unlist(str_split(x, ""))
+    }
+    if (unlist(gregexpr("系", y)) != -1) {
+        b <- unlist(str_split(y, ""))[c(1:tail(unlist(gregexpr("系", y)), n = 1) - 1)]
+    }
+    else {
+        b <- unlist(str_split(y, ""))
+    }
+    a <- a[!(a %in% c("(", "（", ")", "）", "  ", "-", " ", ""))]
+    b <- b[!(b %in% c("(", "（", ")", "）", "  ", "-", " ", ""))]
+    return(sum((a %in% b), (b %in% a))/(length(b) + length(a)) * 100)
+}
+
+ngap <- function(x, y) { 
+    return(1.5^((abs(x - y) / log((x + 1 * y + 1) * 2))))
+}
+
+  df_temp <- df[df$scode == "1053", ] %>% arrange(year)
+  
+  df_temp$disappear <- c(0)
+  df_temp$establish <- c(0)
+  df_temp$possible <- c("")
+  df_temp$possible_score <- c(0)
+  df_temp$possible_sngap <- c(999)
+  df_temp$possible_bcode <- c("")
+  df_temp$change <- c(0)
+  df_temp$possible_tngap <- c(999)
+  df_temp$possible_n <- c(999)
+
+  for (row in 1:nrow(df_temp)) {
+      year <- df_temp[row, "year"]
+      
+      if (year != 109) {
+          aft <- df_temp[df_temp$year == year + 1, "ID"]
+          if (!(df_temp[row, "ID"] %in% aft)) {
+              df_temp[row, "disappear"] = 1 
+          }
+      }
+      
+      if (year != 61) {
+          pre <- df_temp[df_temp$year == year - 1, "ID"]
+          if (!(df_temp[row, "ID"] %in% pre)) {
+              df_temp[row, "establish"] = 1 
+          }
+      }
+      
+  }
+  
+  for (row in 1:nrow(df_temp)) {
+      year <- df_temp[row, "year"]
+      name <- df_temp[row, "bname"]
+      sn <- df_temp[row, "student_n"]
+      tn <- df_temp[row, "teacher_n"]
+      bc <- df_temp[row, "bcode"]
+      
+      # 如果有科系（「代碼」）消失的話...
+      if (df_temp[row, "disappear"] == 1) {
+        
+          next_establish <- df_temp[df_temp$year == year + 1 & df_temp$establish == 1, ]$bname
+          scores <- sapply(next_establish, similar_score, x = name)
+          
+          # 從下年新增的科系中（如果有的話），找出最有可能變成的科系
+          if (length(scores) >= 1) {
+            
+              if (is.na(max(scores))) {
+                  scores[] <- 0
+              }
+            
+              if (max(scores) >= 95) {
+                  pick <- which(scores == max(scores))
+              }
+  
+              else {
+                  p_name <- attributes(scores)$names
+                  sns <- df_temp[df_temp$year == year + 1
+                                 & df_temp$establish == 1 & df_temp$bname %in% p_name, ]$student_n
+                  sngap <- sapply(sns, ngap, x = sn)
+  
+                  tns <- df_temp[df_temp$year == year + 1 & df_temp$establish == 1
+                                 & df_temp$bname %in% p_name, ]$teacher_n
+                  tngap <- sapply(tns, ngap, x = tn)
+                  gap <- sngap + tngap
+                  gap[is.na(gap)] <- 29.871234
+                  
+                  # 在學生、老師人數變動總和小於百分之20的人之中，選名字最相似的
+                  if (max(scores) >= 75) {
+                      pick <- which(scores == max(scores))
+                  }
+                  else if (length(which(gap < 15) >= 1)) {
+                      pick <- which(scores == max(scores[which(gap < 15)]))
+                  }
+                  # 放寬人數變動的標準
+                  else if (length(which(gap < 30) >= 1)) {
+                      pick <- which(scores == max(scores[which(gap < 30)]))
+                  }
+                  else {
+                      pick <- which(scores == max(scores))
+                  }
+  
+                  if (length(pick) >= 2) {
+                      pick <- which(gap == min(gap))
+                  }
+              }
+  
+              if (length(pick) >= 2) {
+                  pick <- pick[1]
+              }
+  
+              p_score <- scores[pick]
+              p_name <- attributes(scores)$names[pick]
+              df_temp[row, "possible_score"] <- p_score
+              df_temp[row, "possible"] <- p_name
+              p <- df_temp$year == year + 1 & df_temp$establish == 1 & df_temp$bname == p_name
+              df_temp[row, "possible_sngap"] <- ngap(sn, df_temp[p, ]$student_n )
+              df_temp[row, "possible_tngap"] <- ngap(tn, df_temp[p, ]$teacher_n)
+              df_temp[row, "possible_bcode"] <- df_temp[p, ]$bcode
+              df_temp[row, "possible_n"] <- length(scores)
+              
+              if (is.na(df_temp[row, "possible_tngap"]))  {
+                  df_temp[row, "possible_tngap"] <- 9.871234
+              }
+          }
+          
+          # 如果相似，就替換過去的科系代碼
+          similar <- df_temp[row, "possible_score"] > 90 |
+            (df_temp[row, "possible_sngap"] <= 5 & df_temp[row, "possible_score"] > 50) |
+            (df_temp[row, "possible_tngap"] <= 5 & df_temp[row, "possible_score"] > 50) |
+            (df_temp[row, "possible_sngap"] <= 2 & df_temp[row, "possible_tngap"] <= 2
+                                                 & df_temp[row, "possible_score"] != 0) |
+            (df_temp[row, "possible_sngap"] <= 2 & df_temp[row, "possible_tngap"] <= 2
+                                                 & df_temp[row, "possible_n"] <= 2) |
+            (df_temp[row, "possible_score"] >= 30 & df_temp[row, "possible_sngap"] <= 30
+                                                  & df_temp[row, "possible_tngap"] <= 10)
+            
+          if (similar & bc != df_temp[row, "possible_bcode"]) {
+              exist <- df_temp[df_temp$year <= year
+                               & df_temp$bcode == df_temp[row, "possible_bcode"]
+                               & df_temp$bname != df_temp[row, "possible"], ]
+              if (nrow(exist) > 0) {
+                  df_temp[df_temp$year <= year
+                         & df_temp$bcode == df_temp[row, "possible_bcode"]
+                         & df_temp$bname != df_temp[row, "possible"], ]$bcode <-
+                  paste0(exist$bcode, "-1")
+              }
+      
+              df_temp[df_temp$year <= year
+                      & df_temp$bcode == bc, ]$bcode <- df_temp[row, "possible_bcode"]
+              df_temp[row, "change"] <- 1
+          }
+      }
+  }
+
+```
+
+
+## 所有學校
+```{r}
+df <- as.data.frame(read_dta("/Users/shengfu/Desktop/臺大/高等量化方法 郭貞蘭/期末報告/college.dta"))
+
+similar_score <- function(x, y) { 
+    if (unlist(gregexpr("系", x))[1] != -1) {
+        a <- unlist(str_split(x, ""))[c(1:tail(unlist(gregexpr("系", x)), n = 1) - 1)]
+    }
+    else {
+        a <- unlist(str_split(x, ""))
+    }
+    if (unlist(gregexpr("系", y))[1] != -1) {
+        b <- unlist(str_split(y, ""))[c(1:tail(unlist(gregexpr("系", y)), n = 1) - 1)]
+    }
+    else {
+        b <- unlist(str_split(y, ""))
+    }
+    return(sum((a %in% b), (b %in% a))/(length(b) + length(a)) * 100)
+}
+
+ngap <- function(x, y) { 
+    return(1.5^((abs(x - y) / log((x + 1 * y + 1) * 2))))
+}
+
+df_final <- df[1, ]
+df_final <- df_final[-1, ]
+schools <- unique(df$scode)
+
+for (school in schools) {
+  df_temp <- df[df$scode == school, ] %>% arrange(year)
+  
+  df_temp$disappear <- c(0)
+  df_temp$establish <- c(0)
+  df_temp$possible <- c("")
+  df_temp$possible_score <- c(0)
+  df_temp$possible_sngap <- c(999)
+  df_temp$possible_bcode <- c("")
+  df_temp$change <- c(0)
+  df_temp$possible_tngap <- c(999)
+  df_temp$possible_n <- c(999)
+
+  for (row in 1:nrow(df_temp)) {
+      year <- df_temp[row, "year"]
+      
+      if (year != 109) {
+          aft <- df_temp[df_temp$year == year + 1, "ID"]
+          if (!(df_temp[row, "ID"] %in% aft)) {
+              df_temp[row, "disappear"] = 1 
+          }
+      }
+      
+      if (year != 61) {
+          pre <- df_temp[df_temp$year == year - 1, "ID"]
+          if (!(df_temp[row, "ID"] %in% pre)) {
+              df_temp[row, "establish"] = 1 
+          }
+      }
+      
+  }
+  
+  for (row in 1:nrow(df_temp)) {
+      year <- df_temp[row, "year"]
+      name <- df_temp[row, "bname"]
+      sn <- df_temp[row, "student_n"]
+      tn <- df_temp[row, "teacher_n"]
+      bc <- df_temp[row, "bcode"]
+      
+      # 如果有科系（「代碼」）消失的話...
+      if (df_temp[row, "disappear"] == 1) {
+          next_establish <- df_temp[df_temp$year == year + 1 & df_temp$establish == 1, ]$bname
+          scores <- sapply(next_establish, similar_score, x = name)
+          
+          # 從下年新增的科系中（如果有的話），找出最有可能變成的科系
+          if (length(scores) >= 1) {
+            
+              if (is.na(max(scores))) {
+                  scores[] <- 0
+              }
+            
+              if (max(scores) >= 95) {
+                  pick <- which(scores == max(scores))
+              }
+  
+              else {
+                  p_name <- attributes(scores)$names
+                  sns <- df_temp[df_temp$year == year + 1
+                                 & df_temp$establish == 1 & df_temp$bname %in% p_name, ]$student_n
+                  sngap <- sapply(sns, ngap, x = sn)
+  
+                  tns <- df_temp[df_temp$year == year + 1 & df_temp$establish == 1
+                                 & df_temp$bname %in% p_name, ]$teacher_n
+                  tngap <- sapply(tns, ngap, x = tn)
+                  gap <- sngap + tngap
+                  gap[is.na(gap)] <- 29.871234
+                  
+                  # 在學生、老師人數變動總和小於百分之20的人之中，選名字最相似的
+                  if (max(scores) >= 75) {
+                      pick <- which(scores == max(scores))
+                  }
+                  else if (length(which(gap < 15) >= 1)) {
+                      pick <- which(scores == max(scores[which(gap < 15)]))
+                  }
+                  # 放寬人數變動的標準
+                  else if (length(which(gap < 30) >= 1)) {
+                      pick <- which(scores == max(scores[which(gap < 30)]))
+                  }
+                  else {
+                      pick <- which(scores == max(scores))
+                  }
+  
+                  if (length(pick) >= 2) {
+                      pick <- which(gap == min(gap))
+                  }
+              }
+  
+              if (length(pick) >= 2) {
+                  pick <- pick[1]
+              }
+  
+              p_score <- scores[pick]
+              p_name <- attributes(scores)$names[pick]
+              df_temp[row, "possible_score"] <- p_score
+              df_temp[row, "possible"] <- p_name
+              p <- df_temp$year == year + 1 & df_temp$establish == 1 & df_temp$bname == p_name
+              df_temp[row, "possible_sngap"] <- ngap(sn, df_temp[p, ]$student_n )
+              df_temp[row, "possible_tngap"] <- ngap(tn, df_temp[p, ]$teacher_n)
+              df_temp[row, "possible_bcode"] <- df_temp[p, ]$bcode
+              df_temp[row, "possible_n"] <- length(scores)
+              
+              if (is.na(df_temp[row, "possible_tngap"]))  {
+                  df_temp[row, "possible_tngap"] <- 9.871234
+              }
+          }
+          
+          # 如果相似，就替換過去的科系代碼
+          similar <- df_temp[row, "possible_score"] > 90 |
+            (df_temp[row, "possible_sngap"] <= 5 & df_temp[row, "possible_score"] > 50) |
+            (df_temp[row, "possible_tngap"] <= 5 & df_temp[row, "possible_score"] > 50) |
+            (df_temp[row, "possible_sngap"] <= 2 & df_temp[row, "possible_tngap"] <= 2
+                                                 & df_temp[row, "possible_score"] != 0) |
+            (df_temp[row, "possible_sngap"] <= 2 & df_temp[row, "possible_tngap"] <= 2
+                                                 & df_temp[row, "possible_n"] <= 2) |
+            (df_temp[row, "possible_score"] >= 30 & df_temp[row, "possible_sngap"] <= 30
+                                                  & df_temp[row, "possible_tngap"] <= 10)
+                    
+          if (similar & bc != df_temp[row, "possible_bcode"]) {
+              exist <- df_temp[df_temp$year <= year
+                               & df_temp$bcode == df_temp[row, "possible_bcode"]
+                               & df_temp$bname != df_temp[row, "possible"], ]
+              if (nrow(exist) > 0) {
+                  df_temp[df_temp$year <= year
+                         & df_temp$bcode == df_temp[row, "possible_bcode"]
+                         & df_temp$bname != df_temp[row, "possible"], ]$bcode <-
+                  paste0(exist$bcode, "-1")
+              }
+              
+              df_temp[df_temp$year <= year
+                      & df_temp$bcode == bc, ]$bcode <- df_temp[row, "possible_bcode"]
+              df_temp[row, "change"] <- 1
+          }
+      }
+  }
+  df_final <- bind_rows(df_final, df_temp)
+}
+
+df_final <- df_final %>% arrange(scode, bcode, year)
+write_dta(df_final, path = "college_clean.dta")
+print("Well Done!")
+```
+
+
+# Graphs
+```{r}
+data <- as.data.frame(read_dta("/Users/shengfu/Desktop/臺大/高等量化方法 郭貞蘭/期末報告/graph.dta"))
+
+
+data %>%
+  ggplot(aes(sy)) +
+  geom_bar() +
+  labs(x = "年份", y = "科\n系\n總\n數") +
+  scale_x_continuous(breaks = seq(1972, 2020, 3), expand = c(0.005,0.005)) +
+  scale_y_continuous(breaks = seq(0, 3000, 500), expand = c(0,0)) +
+  theme(text = element_text(family = "黑體-繁 中黑", size = 12),
+        axis.title.y = element_text(angle = 0, vjust = 0.5), 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"))
+
+data %>% 
+  filter(disbanding == 1) %>% 
+  ggplot(aes(sy)) +
+  geom_bar() +
+  labs(x = "年份", y = "科\n系\n關\n閉\n數\n量") +
+  scale_x_continuous(breaks = seq(1972, 2019, 3), expand = c(0.005,0.005)) +
+  scale_y_continuous(breaks = seq(0, 65, 10), expand = c(0,0)) +
+  theme(text = element_text(family = "黑體-繁 中黑", size = 12),
+        axis.title.y = element_text(angle = 0, vjust = 0.5), 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"))
+
+fit <- survfit(Surv(age, disbanding) ~ 1, data = data)
+plot(fit)
+
+names <- unlist(attr(data$bcode2_new, 'labels') %>% attributes())
+names
+index <- attr(data$bcode2_new, 'labels')
+data$bname <- c("")
+
+for (row in 1:nrow(data)) {
+  data[row, 4] <- names[data[row, 2]]
+}
+
+data %>% 
+  filter(!(bcode2_new %in% c(17, 21, 22, 9)), !is.na(bcode2_new)) %>% 
+  ggplot(aes(x = year, y = disbanding)) +
+  geom_line() +
+  facet_wrap(~bname, scales = "free_y") +
+  labs(x = "民國年", y = "該\n學\n門\n科\n系\n數\n量") + 
+  theme(text = element_text(family = "黑體-繁 中黑", size = 8),
+        axis.title.y = element_text(angle = 0, vjust = 0.5), 
+        #panel.grid.major = element_blank(), 
+        #panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        panel.border = element_rect(fill = NA, color = "black"))
+
+
+data %>% 
+  filter((bcode2_new == 20), !is.na(bcode2_new)) %>% 
+  ggplot(aes(x = year, y = disbanding)) +
+  geom_line() +
+  labs(x = "民國年", y = "該\n學\n門\n科\n系\n數\n量") + 
+  theme(text = element_text(family = "黑體-繁 中黑", size = 8),
+        axis.title.y = element_text(angle = 0, vjust = 0.5), 
+        #panel.grid.major = element_blank(), 
+        #panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        panel.border = element_rect(fill = NA, color = "black"))
+```
+
+
+

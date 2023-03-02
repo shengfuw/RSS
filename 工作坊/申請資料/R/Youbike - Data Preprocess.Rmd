@@ -1,0 +1,212 @@
+---
+title: "Final Project - Youbike (Data Preprocess)"
+author: "G2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load packages
+```{r}
+library(tidyverse)
+library(jsonlite)
+library(lubridate)
+library(httr)
+library(rvest)
+```
+
+# 合併租借紀錄的資料
+```{r}
+path = "data/" #File path!
+
+raw <- read_csv(str_c(path,"201801.csv"))  %>%
+    bind_rows(read_csv(str_c(path,"201802.csv"))) %>%
+    bind_rows(read_csv(str_c(path,"201803.csv"))) %>%
+    bind_rows(read_csv(str_c(path,"201804.csv"))) %>%
+    bind_rows(read_csv(str_c(path,"201805.csv"))) %>%
+    bind_rows(read_csv(str_c(path,"201806.csv"))) %>%
+    bind_rows(read_csv(str_c(path,"201807.csv"))) %>%
+    bind_rows(read_csv(str_c(path,"201808.csv"))) %>%
+    bind_rows(read_csv(str_c(path,"201809.csv"))) %>%
+    bind_rows(read_csv(str_c(path,"201810.csv"))) %>%
+    bind_rows(read_csv(str_c(path,"201811.csv"))) %>%
+    bind_rows(read_csv(str_c(path,"201812.csv")))
+
+raw %>% glimpse()
+write_csv(raw, str_c(path,"ubike_2018_raw.csv"))
+
+rent_df <- raw %>%
+    group_by(rent_station, rent_time) %>%
+    summarise(rent = n())
+
+return_df <- raw %>%
+    group_by(return_station, return_time) %>%
+    summarise(return = n())
+
+all_df <- rent_df %>%
+    full_join(return_df, 
+              by = c("rent_station" = "return_station", 
+                     "rent_time" = "return_time"), 
+              na.replace = T)
+
+all_df$rent <- replace_na(df$rent, 0)
+all_df$return <- replace_na(df$return, 0)
+
+all_df <- all_df %>%
+    select(station = rent_station,
+           time = rent_time, everything())
+
+glimpse(all_df)
+full_df %>% 
+    count(station, sort = T)
+```
+
+# 處理站點資料1
+```{r}
+stations_raw <- fromJSON(str_c(path,"/YouBikeTP.json"))
+
+station_info_1 <- as.data.frame(matrix(unlist(stations_raw[[2]]), 
+                                 nrow = 14, byrow = F)) %>% 
+    rownames_to_column() %>%
+    gather(id, value, -rowname) %>% 
+    spread(rowname, value) %>% 
+    select(id = "1",
+           name = "2",
+           district = "5",
+           lat ="7",
+           lon = "8",
+           adress = "9")
+
+write.csv(station_info_1, str_c(path, "station_info_1.csv"))
+```
+
+# 合併資料：租借量、站點資訊1
+```{r}
+stations_list <- unique(station_info_1$name)
+
+full_df <- all_df %>% 
+    filter(!is.na(time),
+           station %in% stations_list) %>% 
+    mutate(hour = hour(time),
+           date = date(time)) %>% 
+    mutate(hour = ifelse(hour == 0, 24, hour)) %>%
+    group_by(station, date) %>% 
+    complete(hour = seq(1, 24, 1)) %>% #補齊rent, return同時為0的小時 
+    select(-time) %>%
+    mutate(time = as.POSIXct(str_c(as.character(date), '-', hour), 
+                             format = "%Y-%m-%d-%H"),
+           rent = replace_na(rent, 0),
+           return = replace_na(return, 0)) %>% 
+    select(station, time, everything()) %>% 
+    right_join(station_info_1, by = c("station" = "name")) %>% 
+    rename(station_id = id,
+           station_district = district,
+           station_lat = lat, 
+           station_lon = lon,
+           station_adress = adress)
+
+write_csv(full_df, str_c(path,"ubike_2018.csv"))
+```
+
+# 處理與合併資料：天氣資料
+```{r}
+weather <- read_csv(str_c(path,"/weather_2018.csv"))
+
+weather <- weather %>% 
+    mutate(hour = as.integer(time))
+
+# 只有信義、松山區
+full_df <- full_df %>% 
+    inner_join(weather, by = c("date", "hour",
+                               "station_district" = "district")) %>%
+    select(station, 
+           time = time.x, 
+           date, hour, rent, return, press, temp, ws, precp, 
+           district = station_district,
+           station_id, station_lat, station_lon, station_adress)
+
+full_df %>% glimpse()
+```
+
+# 爬蟲與合併資料：站點資訊2（總柱數、鄰近捷運或學校...）
+```{r}
+url <- "https://zh.wikipedia.org/wiki/臺北市公共自行車租賃系統站點列表"
+
+doc <- read_html(url) 
+nodes <- html_nodes(doc, "table > tbody > tr")
+
+station_info_2 <- nodes %>% 
+    html_text() %>% 
+    str_split("\n\n") %>% 
+    unlist() %>% 
+    matrix(ncol = 5, byrow = T) %>% 
+    as_data_frame() %>% 
+    rename(station = V1,
+           station_location = V2, 
+           total = V3,
+           station_start = V4,
+           station_nearby = V5) %>% 
+    mutate(total = as.integer(total),
+           station_start = as.Date(station_start, format = "%Y/%m/%d")) %>% 
+    filter(!is.na(total)) %>% 
+    mutate(station_MRT = str_detect(station_nearby, "捷運"),
+           starion_school = str_detect(station_nearby,
+                                       "國小|國中|高中|高工|高職|大學"))
+
+write_csv(station_info_2, str_c(path,"station_info_2.csv"))
+
+final_df <- full_df %>% 
+    left_join(station_info_2, by = c("station")) %>% 
+    mutate(rent_rate = rent / total) %>% 
+    select(station, time, date, hour, rent, return, total, rent_rate, 
+           press, temp, ws, precp, district, 
+           station_MRT, starion_school, everything())
+
+write_csv(final_df, str_c(path,"final_df.csv"))
+final_df %>% colnames()
+```
+
+# Data cleaning
+```{r}
+#final_df <- reea_csv(str_c(path,"final_df.csv"))
+final_df <- read_csv("/Users/shengfu/文件/data/final data/final_df.csv")
+
+final_df <- final_df %>% 
+    rename(station_school = starion_school) %>% 
+    mutate(press = as.numeric(str_extract(press,pattern = '\\d+\\.\\d')),
+           temp = as.numeric(str_extract(temp,pattern = '\\d+\\.\\d')),
+           ws = as.numeric(str_extract(ws,pattern = '\\d+\\.\\d')),
+           precp = as.numeric(str_extract(precp,pattern = '\\d+\\.\\d')),
+           wd = wday(date),
+           isweekend = ifelse(wd == 1 | wd == 7, T, F),
+           isrush = ifelse((7 <= hour & hour <= 9) | (17 <= hour & hour <= 20), T, F))
+
+final_df %>% select(station, hour, rent, rent_rate, press, temp, ws, precp, district, station_MRT, station_school, isweekend) %>% View
+```
+
+# 分析
+```{r}
+final_df$station %>% unique() %>% length()
+
+# 尖峰時段
+final_df %>% 
+    group_by(hour) %>% 
+    summarise(rent = sum(rent)) %>%
+    ggplot() +
+    aes(hour, rent) +
+    geom_line() +
+    scale_x_continuous(breaks = seq(1,24,2))
+
+# 尖峰時段：依平日與假日
+final_df %>%
+    group_by(hour, isweekend) %>% 
+    summarise(rent = mean(rent)) %>%
+    ggplot(aes(hour, rent, color = isweekend)) +
+    geom_line() +
+    scale_x_continuous(breaks = seq(1,24,2))
+```
+
+
+

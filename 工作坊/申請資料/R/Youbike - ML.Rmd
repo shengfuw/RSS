@@ -1,0 +1,139 @@
+---
+title: "Youbike - ML"
+author: "Sheng Fu, B07305022"
+date: "1/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load packages and data
+
+```{r}
+library(tidyverse)
+library(lubridate)
+
+raw <- read_csv("/Users/shengfu/文件/data/final_df.csv")
+```
+
+
+# Data cleaing
+
+```{r}
+df <- raw %>% 
+    rename(station_school = starion_school) %>% 
+    mutate(press = as.numeric(str_extract(press,pattern = '\\d+\\.\\d')),
+           temp = as.numeric(str_extract(temp,pattern = '\\d+\\.\\d')),
+           ws = as.numeric(str_extract(ws,pattern = '\\d+\\.\\d')),
+           precp = as.numeric(str_extract(precp,pattern = '\\d+\\.\\d')),
+           wd = wday(date),
+           isweekend = ifelse(wd == 1 | wd == 7, T, F),
+           isrush = ifelse((7 <= hour & hour <= 9) | (17 <= hour & hour <= 20), T, F))
+```
+
+# Prediction
+
+```{r}
+set.seed(123)
+
+ml.df <- df %>%
+    select(station, hour, rent, press, temp, ws, precp, total,
+           station_MRT, station_school, wd) %>% 
+    filter(!is.na(press),
+           !is.na(temp),
+           !is.na(ws),
+           !is.na(precp)) %>% 
+    mutate(station_MRT = as.numeric(station_MRT),
+           #station_id = as.numeric(station_id),
+           station_school = as.numeric(station_school))
+
+index <- sample(1:nrow(ml.df), ceiling(nrow(ml.df) * .70))
+
+train.df <- ml.df[index, ]
+test.df <- ml.df[-index, ]
+```
+
+
+## Linear Regression
+```{r}
+model.lr <- lm(rent ~ ., data = train.df)
+#summary(model.lr)
+
+preds.lr <- predict(model.lr, test.df)
+mse.lr <- mean((test.df$rent - preds.lr)^2)
+rmse.lr <- sqrt(mse.lr)
+```
+
+
+## SVM
+```{r}
+library(e1071)
+
+model.svr <- svm(rent ~ ., data = train.df) 
+
+preds.svr = predict(model.svr, data)
+mse.svr <- mean((test.df$rent - preds.svr)^2)
+rmse.svr <- sqrt(mse.svr)
+```
+
+
+## Evalution: MAE, MSE, RMSLE
+
+- randomForest
+```{r}
+library(randomForest)
+
+stime <- Sys.time()
+fit_rf <- randomForest(rent ~ ., data = train.df)
+ttime <- Sys.time(); str_c("t(training): ", ttime - stime)
+predicted$rf <- predict(fit_rf, newdata = test.df)
+str_c("t(predicting): ", Sys.time() - ttime)
+```
+
+-  Dividing with Dimensional reduction by PCA
+```{r}
+set.seed(1234)
+
+index <- sample(1:nrow(ml.df), ceiling(nrow(ml.df) * .70))
+
+# Training set
+x.pca <- prcomp(ml.df[index, ] %>% select(-rent), center = T, scale. = F)
+
+plot(x.pca, type = "l")
+
+train.df.pca <- x.pca$x[, 1:4] %>% as_tibble() %>%
+    bind_cols(ml.df[index, ] %>% select(rent))
+
+# Testing set
+x.test.pca <- predict(x.pca, newdata = ml.df[-index,] %>% select(-rent))
+
+test.df.pca <- x.test.pca[, 1:4] %>% as_tibble() %>%
+    bind_cols(ml.df[-index, ] %>% select(rent))
+```
+
+- randomForest by PCA
+```{r}
+library(randomForest)
+
+stime <- Sys.time()
+fit_rf <- randomForest(rent ~ ., data = train.df.pca)
+ttime <- Sys.time(); str_c("t(training): ", ttime - stime)
+predicted$rf <- predict(fit_rf, newdata = test.df.pca)
+str_c("t(predicting): ", Sys.time() - ttime)
+
+conf.mat <- table(predicted$knn[,1], predicted$rent)
+(accuracy <- sum(diag(conf.mat))/sum(conf.mat) * 100)
+```
+
+- KNN
+```{r}
+library("caret")
+predicted <- test.df.pca %>% select(rent)
+
+fit_knn <- knnreg(rent ~ ., data = train.df.pca , k = 5)
+predicted$knn <- predict(fit_knn, newdata = test.df.pca)
+```
+
+ 

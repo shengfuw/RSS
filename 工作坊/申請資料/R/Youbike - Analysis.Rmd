@@ -1,0 +1,108 @@
+---
+title: "Youbike - Analysis"
+author: "Sheng Fu, B07305022"
+date: "12/30/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load packages and data
+
+```{r}
+library(tidyverse)
+library(lubridate)
+
+raw <- read_csv("/Users/shengfu/文件/data/final_df.csv")
+```
+
+
+# Data cleaing
+
+```{r}
+df <- raw %>% 
+    rename(station_school = starion_school) %>% 
+    mutate(press = as.numeric(str_extract(press,pattern = '\\d+\\.\\d')),
+           temp = as.numeric(str_extract(temp,pattern = '\\d+\\.\\d')),
+           ws = as.numeric(str_extract(ws,pattern = '\\d+\\.\\d')),
+           precp = as.numeric(str_extract(precp,pattern = '\\d+\\.\\d')),
+           wd = wday(date),
+           isweekend = ifelse(wd == 1 | wd == 7, T, F),
+           isrush = ifelse((7 <= hour & hour <= 9) | (17 <= hour & hour <= 20), T, F))
+```
+
+# Description & Plot
+
+分析影響需求的因素：時段與日期、天氣、站點資訊（冷熱門、捷運與學校...)
+
+- 時段
+```{r}
+# 尖峰時段
+df %>% 
+    group_by(hour) %>% 
+    summarise(rent = sum(rent)) %>%
+    ggplot() +
+    aes(hour, rent) +
+    geom_line() +
+    scale_x_continuous(breaks = seq(1,24,2))
+
+# 尖峰時段：依平日與假日
+df %>%
+    group_by(hour, isweekend) %>% 
+    summarise(rent = mean(rent)) %>%
+    ggplot(aes(hour, rent, color = isweekend)) +
+    geom_line() +
+    scale_x_continuous(breaks = seq(1,24,2))
+```
+
+- 天氣
+```{r}
+# df %>% 
+#     mutate(week = week(time)) %>% 
+#     group_by(week) %>% 
+#     summarise(rent = mean(rent_rate),
+#               precp = mean(as.integer(precp))) %>%
+#     ggplot(aes(x = week)) +
+#     geom_line(aes(y = rent), color = "orange") +
+#     geom_line(aes(y = precp), color = "steelblue")
+
+# 天氣變項的distribution
+df %>% 
+    ggplot(aes(press)) + 
+    geom_density()
+
+df %>% 
+    ggplot(aes(temp)) + 
+    geom_density()
+
+df %>% 
+    ggplot(aes(ws)) + 
+    geom_density()
+
+df %>% 
+    ggplot(aes(precp)) + 
+    geom_density()
+
+# 需求與天氣資料的散佈圖
+df %>% 
+    ggplot(aes(press, rent, color = station_MRT)) + 
+    geom_jitter(alpha = 0.5)
+
+df %>% 
+    ggplot(aes(temp, rent, color = station_MRT)) + 
+    geom_jitter(alpha = 0.5)
+
+df %>% 
+    ggplot(aes(ws, rent, color = station_MRT)) + 
+    geom_jitter(alpha = 0.5)
+
+df %>% 
+    ggplot(aes(precp, rent, color = station_MRT)) + 
+    geom_jitter(alpha = 0.5)
+
+# 相關性
+```
+
+- 討論天氣與站點資訊／時段的交互作用？
