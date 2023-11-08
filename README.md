@@ -1,6 +1,6 @@
-# 社會模擬重製研究 Replication of Social Simulation
+# 社會模擬重製研究 Replication of Social Simulation Research
 
-重製過去以電腦進行社會模擬之經典研究。Author: Sheng Fu, Wang. 
+### Author: Shengfu Wang
 
 ### Papers
 
